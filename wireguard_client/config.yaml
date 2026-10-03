@@ -4,7 +4,7 @@ breaking_versions:
   - "0.2.0"
 slug: wireguard_client
 url: https://github.com/FirestormV/ha-wireguard-client
-description: Outbound WireGuard tunnel to pfSense with routed access to Home Assistant
+description: Isolated WireGuard tunnel to pfSense with TCP access to Home Assistant
 arch:
   - aarch64
   - amd64

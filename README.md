@@ -26,6 +26,8 @@ Code, logs and primary documentation are English. Configuration labels and the p
 
 ## Validation
 
+[Validated on GitHub Actions](https://github.com/FirestormV/ha-wireguard-client/actions/runs/37118241840): 21 unit tests and the Linux integration test passed.
+
 The test suite covers option validation, cleanup, public key display, Ingress access restrictions and TCP relay configuration. CI builds the amd64 image and runs a real WireGuard tunnel between disposable Docker containers, checking HTTP, an upgraded binary TCP stream, stop/start recovery and unchanged host routes.
 
 ```sh
