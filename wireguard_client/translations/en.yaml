@@ -16,7 +16,7 @@ configuration:
     description: "The WireGuard listening port on pfSense. Default: 51820."
   tunnel_address:
     name: "Client tunnel address"
-    description: "The IPv4 address of HA in the tunnel, with /32 prefix. Example: 10.77.0.2/32."
+    description: "The IPv4 address of this add-on in the tunnel, with /32 prefix. Example: 10.77.0.2/32."
   allowed_ips:
     name: "Networks through pfSense"
     description: "Include the pfSense tunnel IP and home subnets for return traffic. Do not include the remote LAN or a default route."
@@ -26,3 +26,9 @@ configuration:
   mtu:
     name: "Tunnel MTU"
     description: "Maximum tunnel packet size, 1280–1420 bytes. Default: 1380. Try 1280 if large transfers stall."
+  homeassistant_host:
+    name: "Home Assistant backend"
+    description: "IPv4 address or hostname of HA Core reachable from the add-on. Default: homeassistant."
+  homeassistant_port:
+    name: "Home Assistant backend TCP port"
+    description: "HA Core TCP port. Default: 8123. The tunnel-facing port stays 8123."

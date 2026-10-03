@@ -1,3 +1,16 @@
+# 0.2.0
+
+Breaking update: read the migration guide and stop version 0.1.x before upgrading.
+
+- Move WireGuard and routes into the add-on network namespace; remove host networking.
+- Relay only tunnel TCP port 8123 to the configured HA Core backend.
+- Add homeassistant_host and homeassistant_port, defaulting to homeassistant:8123.
+- Block container IP forwarding, enable AppArmor, and remove Supervisor API access.
+- Keep the public key page on internal Ingress port 8099 without published host ports.
+- Default new installs to manual startup and require manual approval of this update.
+- Add real WireGuard/HTTP/stream/restart tests and verify host routes remain unchanged.
+- HA now sees the add-on's internal IP as the source of tunnel connections.
+
 # 0.1.4
 
 - Add a custom app icon for the Home Assistant store and repository README.

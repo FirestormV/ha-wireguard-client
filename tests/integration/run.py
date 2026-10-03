@@ -65,7 +65,7 @@ try:
         status=execute('wg-ha-peer','python3','-c',f"import urllib.request,urllib.error\ntry: urllib.request.urlopen('http://{bridge_ip}:8099')\nexcept urllib.error.HTTPError as e: print(e.code)")
         assert status == '403'
         # Verify a bidirectional binary stream after HTTP protocol upgrade.
-        execute('wg-ha-peer','python3','-c',"""import socket
+        execute('wg-ha-peer','python3','-c',r"""import socket
 s=socket.create_connection(('10.77.0.2',8123),timeout=5)
 s.sendall(b'GET / HTTP/1.1\r\nHost: ha\r\nConnection: Upgrade\r\nUpgrade: wireguard-test\r\n\r\n')
 f=s.makefile('rb'); assert b'101' in f.readline()

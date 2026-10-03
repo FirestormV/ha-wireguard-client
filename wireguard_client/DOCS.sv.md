@@ -1,45 +1,37 @@
 # WireGuard Client för Home Assistant OS
 
-[Documentation in English](DOCS.md)
+[Full documentation in English](DOCS.md)
 
-Fältnamn och hjälptexter finns på svenska och engelska i HA. YAML-nycklarna är alltid engelska.
+Version 0.2.0 är experimentell. IPv4, en pfSense-peer, amd64 och aarch64.
 
-Version 0.1.4, experimentell. Stöd: amd64 och aarch64, IPv4, en pfSense-peer.
+## Isolerat nätverk
 
-## Adressplan och trafik
+Hemdator → pfSense → WireGuard → tilläggets tunneladress:8123 → TCP-proxy → HA Core.
 
-Exempelvärden att ersätta med dina egna:
+Tunnelgränssnittet och dess routes finns nu bara i tilläggets nätverksnamespace. Host networking används inte och inga portar publiceras på värden. NET_ADMIN gäller tilläggets nätverk. Vidarebefordran av IP-paket blockeras inne i containern, AppArmor är aktiverat och inget Supervisor-API behövs.
 
-| Del | Adress |
-|---|---|
-| Hemnät bakom pfSense | 192.168.10.0/24 |
-| pfSense offentlig endpoint | vpn.example.com:51820/UDP |
-| pfSense tunneladress | 10.77.0.1/24 |
-| HA OS tunneladress | 10.77.0.2/32 |
-| Framtida fjärr-LAN | 192.168.50.0/24 |
+TCP-proxyn lyssnar bara på tunneladressen, port 8123, och ansluter till ett konfigurerat mål, normalt `homeassistant:8123`. Den hanterar upp till 32 samtidiga anslutningar och vidarebefordrar rå TCP: HTTP, WebSocket och TLS kan passera utan ändrade HTTP-headers eller avslutad TLS-kryptering. HA:s vanliga inloggning behövs.
 
-Hemdator → pfSense → WireGuard → 10.77.0.2:8123 → Home Assistant.
-Returtrafiken till 192.168.10.0/24 går genom tunneln. Vanlig internettrafik behåller HA OS befintliga default route.
+HA ser tilläggets interna IP som källa, inte hemklientens ursprungliga adress. Kontrollera eventuella IP-blockeringar och trusted-network-inloggning; ge inte containern bred lösenordsfri åtkomst. Ingen ny `trusted_proxies`-inställning behövs för TCP-proxyn.
 
-Add-on använder host networking och skapar `wg-ha-client` i HA OS nätverksnamespace. Home Assistant Core nås därför på tunneladressen om HTTP-tjänsten lyssnar på den, normalt via standardbindningen till alla adresser. Ingen HTTP-proxy behövs. Använd HTTPS och motsvarande port om din HA-installation kräver det. Ändra inte `trusted_proxies` för denna direkta anslutning.
+Containern delar fortfarande kärna, CPU och minne med värden. Det här begränsar risken för routingfel men är inte samma isolering som en separat virtuell maskin.
 
-CGNAT på fjärrsidan fungerar eftersom add-on skickar utgående UDP och som standard sätter `PersistentKeepalive = 25`. pfSense måste vara nåbar utifrån: publik IPv4 eller fungerande UDP-portvidarebefordran till pfSense. Om även hemsidan sitter bakom CGNAT utan inkommande anslutning krävs en annan nåbar knutpunkt. Fjärrsidans router behöver ingen portvidarebefordran.
+## Uppgradering från 0.1.x
 
-## Installation som lokalt add-on
+0.1.x använde värdens nätverk. 0.2.0 är därför markerad som en ändring som kräver manuell uppdatering.
 
-1. Kopiera hela katalogen `wireguard_client` till `/addons/wireguard_client` på HA OS, exempelvis genom Samba-tilläggets addons-delning eller SSH-tillägget med åtkomst till `/addons`.
-2. Öppna Inställningar → Tillägg/Apps → butik. Sök efter uppdateringar/läs om butiken via menyn. Installera **WireGuard Client** under lokala tillägg. Supervisor bygger imagen från Dockerfile; internetåtkomst krävs.
-3. Ange värden under Configuration/Konfiguration enligt exemplet nedan och spara.
-4. Starta, kontrollera loggen och slå på start vid uppstart samt Supervisor Watchdog för processkrascher. Tunneln får ingen separat HTTP-watchdog.
-5. Starta om add-on efter konfigurationsändringar.
+1. Anslut via HA:s vanliga lokala adress. Stäng av det gamla tilläggets **Start vid uppstart** och **Watchdog**, och **stoppa det före uppdateringen**. Normalt stopp tar bort det gamla tunnelgränssnittet och dess routes.
+2. Om tillägget tidigare kraschade: kontrollera från HA OS värdkonsol om något finns kvar med `ip link show dev wg-ha-client` och `ip -4 route show dev wg-ha-client`. Nya versionen kan inte städa bort gamla gränssnitt på värden. Om sådana finns kvar, håll autostart avstängd och gör en kontrollerad HA OS-omstart innan du fortsätter. Ta inte bort andra nätverksgränssnitt eller routes.
+3. Uppdatera till 0.2.0. Nycklar och inställningar behålls. Anpassa `homeassistant_host` och `homeassistant_port` om Core inte nås på `homeassistant:8123`.
+4. Starta manuellt och testa både lokal åtkomst och tunneln. Aktivera autostart först efter fungerande tester.
 
-Det kräver `NET_ADMIN` och kernelstöd för WireGuard på HA OS. Ingen `/dev/net/tun`, Docker-API eller `SYS_MODULE` används. AppArmor är avstängt i denna första version; ett anpassat och HA-testat profilskydd är framtida härdning. Om din Supervisor nekar nätverksbehörigheten, kontrollera Protected mode och stäng av det för just detta add-on om det behövs. Kör aldrig flera installationer samtidigt med samma gränssnittsnamn.
+Tunneladressen fungerar som tidigare för HA, exempelvis `http://10.77.0.2:8123`. Andra tjänster på HA-värden och hela fjärr-LAN exponeras inte. Om Core använder TLS måste du använda HTTPS med värdnamn som matchar dess certifikat. Proxyn skapar inga certifikat.
 
-För installation via repository kan denna leverans läggas i ett eget Git-repository, med `repository.yaml` i roten och `wireguard_client` direkt under roten. Lägg sedan till repository-URL i HA-butiken. Repository: https://github.com/FirestormV/ha-wireguard-client.
+## Installation och nycklar
 
-## Nycklar och konfiguration
+Lägg till `https://github.com/FirestormV/ha-wireguard-client` i tilläggsbutikens Repositories, installera, konfigurera och starta manuellt. Lokalt kan katalogen `wireguard_client` kopieras till `/addons/wireguard_client` via Samba/SSH. Supervisor bygger imagen och behöver internetåtkomst.
 
-Generera ett separat klientnyckelpar på en betrodd dator med WireGuard-verktyg:
+Generera ett separat klientnyckelpar på en betrodd dator eller i pfSense Shell med WireGuard-verktyg:
 
 ```sh
 umask 077
@@ -47,11 +39,11 @@ wg genkey > ha-private.key
 wg pubkey < ha-private.key > ha-public.key
 ```
 
-Privata klientnyckeln hör hemma i add-on; publika klientnyckeln i pfSense peer. `peer_public_key` är pfSense-tunnelns publika nyckel, inte klientens. En valfri preshared key genereras med `wg genpsk` och måste vara identisk på båda sidor.
+Privata klientnyckeln hör hemma i tillägget. Publika klientnyckeln ska till klientens peer i pfSense. pfSense-tunnelns publika nyckel ska till `peer_public_key`. Valfri delad PSK från `wg genpsk` måste matcha på båda sidor.
 
 ```yaml
-private_key: "KLISTRA_IN_KLIENTENS_PRIVATA_NYCKEL"
-peer_public_key: "KLISTRA_IN_PFSENSE_PUBLIKA_NYCKEL"
+private_key: "KLIENTENS_PRIVATA_NYCKEL"
+peer_public_key: "PFSENSE_PUBLIKA_NYCKEL"
 preshared_key: ""
 endpoint_host: "vpn.example.com"
 endpoint_port: 51820
@@ -61,80 +53,52 @@ allowed_ips:
   - "192.168.10.0/24"
 persistent_keepalive: 25
 mtu: 1380
+homeassistant_host: "homeassistant"
+homeassistant_port: 8123
 ```
 
-Alla fält i HA Configuration:
+Byt exempelnäten till dina egna. `allowed_ips` innehåller pfSense tunnel-IP och hemnäten som behöver nå HA. Dessa blir returvägar inne i tillägget. Ange inte fjärr-LAN, Core-målets adress eller default route. Överlapp med containerns Docker-nät avvisas.
 
-| Fält | Betydelse | Standard/exempel |
-|---|---|---|
-| `private_key` | Klientens privata WireGuard-nyckel | Måste fyllas i |
-| `peer_public_key` | pfSense-tunnelns publika nyckel | Måste fyllas i |
-| `preshared_key` | Extra delad nyckel, samma på båda sidor | Tom = används inte |
-| `endpoint_host` | pfSense publik IPv4 eller DNS-namn | vpn.example.com |
-| `endpoint_port` | pfSense UDP-port | 51820 |
-| `tunnel_address` | HA:s IPv4-adress i tunneln, /32 | 10.77.0.2/32 |
-| `allowed_ips` | Nät via pfSense, inklusive hemnätets returväg | 10.77.0.1/32 och 192.168.10.0/24 |
-| `persistent_keepalive` | Keepalive-intervall, 0–65535 sekunder | 25; 0 = av |
-| `mtu` | Tunnelns MTU, 1280–1420 | 1380 |
+Keepalive kan vara 0–65535 sekunder; standard 25 passar CGNAT, 0 stänger av. MTU kan vara 1280–1420, standard 1380. `tunnel_address` måste vara IPv4 /32. IPv6 och full tunnel stöds inte. `homeassistant_host` är DNS-namn eller IPv4 för Core, och `homeassistant_port` dess TCP-port. Porten på tunnelsidan är alltid 8123.
 
-`allowed_ips` anger nät **på hemsidan** som ska nås genom pfSense och godtas som källadresser från dess peer. Hemnätet måste finnas här för svarstrafik från HA. Ange alla relevanta hem-VLAN uttryckligen. Fjärr-LAN ska inte läggas i denna lista.
+Core måste lyssna på en adress som är nåbar från det interna tilläggsnätet. Målets DNS-adress läses vid start; starta om tillägget om adressen ändras. Om Core tillfälligt är nere kan nya anslutningar fungera när det kommer tillbaka på samma IP.
 
-`persistent_keepalive` kan ändras i UI: 0–65535 sekunder, standard 25. Värdet 0 stänger av periodisk keepalive; behåll normalt 25 bakom CGNAT så att NAT-mappningen hålls öppen. Äldre konfiguration utan fältet använder 25. `tunnel_address` måste vara /32. Default route, överlappande poster och kollision med värdens befintliga nät avvisas. Använd separata, icke överlappande subnät för hem, fjärr-LAN, tunnel och HA:s interna Docker-nät. IPv6 och full tunnel stöds inte i v0.1.4.
+Nycklarna lagras i Supervisors inställningar och kan ingå i säkerhetskopior. UI-maskering innebär inte separat kryptering. Den tillfälliga WireGuard-konfigurationen har rättigheter 0600 och raderas efter inläsning.
 
-Hemligheter ligger i Supervisors options-lagring och kan finnas i säkerhetskopior. UI-fält av typen password ger maskering, inte separat kryptering. Den tillfälliga WireGuard-konfigurationen skapas med rättigheter 0600 i `/tmp` och tas bort efter inläsning. Loggen innehåller klientens publika nyckel men inga privata nycklar.
+## Visa publik nyckel
 
-## Visa klientens publika nyckel
+Med giltig konfiguration och startat tillägg: välj **Öppna webbgränssnitt**. Sidan visar den publika nyckeln i ett skrivskyddat fält med kopieringsknapp. Den härleds från privata nyckeln vid start; starta om efter ändring. Ingen privat nyckel skapas eller visas på sidan.
 
-Spara giltig konfiguration och starta tillägget. Välj **Öppna webbgränssnitt** för ett skrivskyddat fält med klientens publika nyckel och en kopieringsknapp. Klistra in den i klientens peer i pfSense. Sidan fungerar medan tillägget körs, även när DNS eller handshake väntar. Den fungerar inte när tillägget är stoppat eller inte kan starta.
-
-Nyckeln beräknas från den privata nyckeln vid start. Starta om efter nyckeländring; sidan visar den inlästa nyckeln. Den skapar ingen privat nyckel. Den privata nyckeln skickas aldrig till webbservern.
-
-Sidan använder HA Ingress och tillåter endast Supervisors anslutningar från 172.30.32.2. Supervisor-API används för att hämta en tilldelad port. Direkt åtkomst från LAN nekas. Språk kan väljas på sidan; initialt används webbläsarens språk. Om automatisk kopiering saknas markeras nyckeln för manuell kopiering.
-
-Ingress behöver fortfarande verifieras på riktig HA OS: öppna sidan, kopiera nyckeln och jämför med loggen. Efter nyckeländring och omstart ska motsvarande nya publika nyckel visas.
+Sidan fungerar under DNS-väntan och utan handshake, men inte om processen är stoppad eller misslyckas vid start. HA Ingress ger åtkomst; endast Supervisors källadress 172.30.32.2 tillåts. Port 8099 finns bara i tillägget. Engelska/svenska kan väljas på sidan. Vid nekad automatisk kopiering markeras nyckeln för manuell kopiering.
 
 ## pfSense
 
-1. Installera/aktivera WireGuard-paketet. Skapa en tunnel med port `51820`, adress `10.77.0.1/24` och ett eget nyckelpar.
-2. Lägg till klienten som peer: klientens publika nyckel, **Dynamic Endpoint** aktiverat och Allowed IPs **endast `10.77.0.2/32`**. Lämna endpoint tom. Eventuell PSK ska matcha add-on.
-3. WAN-regel: tillåt UDP till **WAN address**, port `51820`. Fjärrsidans CGNAT-adress kan ändras; begränsa källan bara om du har en stabil källadress. Ingen portöppning för 8123 på WAN behövs.
-4. På hem-LAN/VLAN där anslutningen initieras: tillåt TCP från önskade hemklienter till `10.77.0.2`, port `8123`. Lägg före policy-routingregler; låt regeln använda normal routing utan vald VPN/WAN-gateway. Svar till en tillåten anslutning hanteras av pfSense state table.
-5. Kontrollera att pfSense har en ansluten route till `10.77.0.0/24` via sin WireGuard-tunnel. Hemklienterna ska använda pfSense som gateway, eller ha route till tunneln via pfSense. Behåll WAN som pfSense default gateway, särskilt vid interface assignment.
-6. För denna anslutningsriktning behövs ingen bred allow-any-regel från WireGuard in till hemnätet. Lägg bara smala regler på WireGuard/assignat tunnelinterface om fjärrsidan också ska få initiera trafik till hemmet. Befintliga floating/group-regler kan påverka resultatet.
-7. NAT mellan hemnät och tunnel behövs inte. Kontrollera att egna outbound NAT-regler inte skriver om denna trafik.
+1. Tunnel med exempeladress `10.77.0.1/24`, lyssningsport UDP 51820 och eget nyckelpar.
+2. Peer med klientens publika nyckel, **Dynamic Endpoint**, tom endpoint och Allowed IPs `10.77.0.2/32`. PSK ska matcha om den används.
+3. WAN-regel som tillåter UDP till WAN-adressen på port 51820. Öppna inte HA-port 8123 på WAN.
+4. Hem-LAN/VLAN: tillåt avsedda klienter till `10.77.0.2` TCP 8123, före policy-routingregler och utan vald WAN/VPN-gateway.
+5. Kontrollera route till `10.77.0.0/24` via tunneln och att hemklienterna använder pfSense för det nätet. Behåll WAN som default gateway.
+6. Bred allow-any från tunneln och NAT mellan hemnät och tunnel behövs inte för hemifrån initierade anslutningar. Granska egna floating/group- och NAT-regler.
 
-Add-on är ingen brandvägg: andra tjänster som lyssnar på HA-värdens tunneladress kan också vara nåbara om nätets regler tillåter det. Begränsa pfSense LAN-regler till önskade klienter/portar; komplettera med en blockregel före breda LAN allow-any-regler om du vill garantera att övrig tunneltrafik blockeras. Befintlig forwarding på HA OS lämnas orörd, så lägg inte routes till fjärr-LAN i pfSense innan dess regler är planerade.
+pfSense måste vara nåbar via publik IPv4 eller fungerande UDP-portvidarebefordran. CGNAT på fjärrsidan fungerar med utgående trafik och keepalive. Om båda sidor saknar inkommande nåbarhet behövs en annan knutpunkt. Ingen portvidarebefordran krävs på fjärrsidan.
 
-## Verifiering på din installation
+## Test och felsökning
 
-- Loggen ska först säga att tunneln är konfigurerad, därefter **Handshake healthy** (kontroll var 30:e sekund). Startmeddelandet ensamt bevisar ingen fungerande tunnel.
-- pfSense WireGuard-status ska visa en aktuell handshake och en dynamiskt inlärd endpoint för klienten.
-- Från hemnät: öppna `http://10.77.0.2:8123`. Prova inloggning och att gränssnittets realtidsuppdateringar fungerar.
-- Från pfSense kan du testa ping med källadress `10.77.0.1`. För ping från hemklient behövs också en tillåtande ICMP-regel på LAN.
-- Stoppa/starta add-on, starta om HA OS och bryt/återställ fjärrsidans internet. Kontrollera återanslutning och att vanlig HA-internetåtkomst består.
-- Verifiera efter stopp att `wg-ha-client` och dess routes är borta. SIGTERM städar upp; efter en hård processkrasch kan gränssnittet ligga kvar tills nästa start, som återtar endast ett gränssnitt med rätt ägarmarkör.
+- Kontrollera aktuell handshake i pfSense och **Handshake healthy** i loggen.
+- Prova HA:s vanliga lokala adress samt tunneladressen. Testa inloggning och realtidsuppdateringar. HTTPS kräver rätt certifikatnamn.
+- Kontrollera publika nyckeln på webbsidan mot logg och pfSense.
+- Stoppa tillägget: tunneln ska sluta fungera medan lokal HA-åtkomst består. Starta och kontrollera återhämtning.
+- Prova kontrollerat internetavbrott, tilläggsomstart och HA OS-omstart. Använd inte strömavbrott som test.
+- Värdens routes ska inte ändras av tunnelstart/stopp. `wg-ha-client` ska bara finnas inne i tillägget.
 
-Utan handshake: kontrollera UDP, endpoint, publik nåbarhet, nycklar och PSK. Med handshake men utan HTTP: kontrollera LAN-regel, pfSense-route, add-on `allowed_ips` för hemklientens verkliga källnät och HA HTTP-bindning/port. Vid hängande större överföringar prova MTU 1280.
+Utan handshake: kontrollera UDP, endpoint och nycklar. Med handshake men utan HTTP: kontrollera pfSense-regler, hemklientens nät i `allowed_ips`, Core-adress/port och lyssningsinställningar. En IP-blockering av tilläggets adress i Core påverkar alla tunnelklienter. Om stora överföringar fastnar, prova MTU 1280.
 
-Vid utebliven handshake i över 180 sekunder uppdateras endpoint via DNS var 30:e sekund. Initial DNS-brist väntas ut. WireGuard återförhandlar själv efter avbrott; en peer som är offline gör inte att processen avslutas. Watchdog fångar processfel, inte alla nätfel.
+Efter 180 sekunder utan aktuell handshake uppdateras endpoint via DNS var 30:e sekund. DNS-fel vid start väntas ut. Watchdog upptäcker processfel, inte alla nätfel. HA OS/Supervisor/AppArmor, riktig HA-inloggning/WebSocket/TLS, pfSense/CGNAT och aarch64 behöver verifieras i målmiljön även efter godkända CI-tester.
 
-## Nästa steg: hela fjärr-LAN
+## Framtida fjärr-LAN
 
-Arkitekturen behåller klienternas källadresser och kan utökas till routad site-to-site. V0.1.4 implementerar inte hantering av forwarding, FORWARD-regler eller NAT.
+Denna version är avsiktligt en TCP-väg till HA. Den vidarebefordrar inte IP-paket till hela fjärr-LAN.
 
-För exempel-LAN `192.168.50.0/24`, med HA OS på en reserverad LAN-adress `192.168.50.10`, behöver nästa version/design:
+En framtida LAN-gateway bör vara separat, helst på fjärrroutern eller en dedikerad gateway, med egen peer-identitet. Då behövs fjärrsubnät i pfSense-peerens Allowed IPs, matchande routes, smala forwardingregler och returroute på fjärrroutern eller begränsad SNAT. HA-tillägget kan då behålla isoleringen. Broadcast/mDNS kräver separat hantering.
 
-1. Utöka **pfSense-peerens** Allowed IPs med `192.168.50.0/24`; behåll `10.77.0.2/32`.
-2. Lägg route i pfSense för `192.168.50.0/24` via peer `10.77.0.2` på ett assignat WireGuard-interface. Allowed IPs ersätter inte operativsystemets route. Undvik att denna gateway blir default.
-3. Hantera IPv4-forwarding och snäva stateful FORWARD-regler mellan `wg-ha-client` och rätt LAN-interface på HA OS. Bevara Docker/Supervisor-regler; aldrig flush av globala tabeller. Använd egna kedjor och definiera ägarskap, start/stop och återställning efter värdomstart.
-4. Lägg returroute på fjärrroutern: `192.168.10.0/24 via 192.168.50.10`. Alternativt krävs smal SNAT för just hem→fjärr-LAN, vilket döljer ursprunglig klientadress. Routad returväg är förstahandsval.
-5. Tillåt önskad trafik i pfSense och fjärrenheternas brandväggar. Testa båda riktningar, avbrott och omstarter. mDNS/broadcast-discovery följer inte automatiskt med en routad tunnel.
-
-Det kan vara mer robust att placera framtida LAN-routing på en dedikerad router om HA OS inte lämpar sig för beständig brandväggshantering. Samma tunneladressplan och pfSense-upplägg kan behållas.
-
-## Källor
-
-- [Home Assistant add-on/app-konfiguration](https://developers.home-assistant.io/docs/apps/configuration/)
-- [WireGuard Quick Start och keepalive](https://www.wireguard.com/quickstart/)
-- [Netgate remote access-exempel](https://docs.netgate.com/pfsense/en/latest/recipes/wireguard-ra.html)
-- [Netgate WireGuard-routing](https://docs.netgate.com/pfsense/en/latest/vpn/wireguard/routing.html)
+Källor och fullständiga tekniska detaljer finns i [den engelska guiden](DOCS.md).

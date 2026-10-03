@@ -2,31 +2,39 @@
 
 ![WireGuard Client icon](wireguard_client/icon.png)
 
-An outbound IPv4 WireGuard tunnel from Home Assistant OS behind CGNAT to pfSense. Configure keys, endpoint, routes, MTU and PersistentKeepalive (default: 25 seconds) in the Home Assistant add-on configuration UI.
+Access Home Assistant through an outbound IPv4 WireGuard tunnel to pfSense, even when the remote site uses CGNAT. Configure keys, endpoint, keepalive, MTU and networks in Home Assistant.
 
-Host networking makes Home Assistant accessible at its tunnel address. Explicit return routes preserve access from your home network without changing the default internet route.
+## Isolated networking in 0.2.0
+
+WireGuard and its routes live inside the add-on's own network namespace. The add-on does not use host networking. A TCP relay listens only on the tunnel address, port 8123, and connects to `homeassistant:8123` by default. The HA host's routing table and default gateway are not modified.
+
+The relay carries HTTP, WebSocket and TLS bytes without terminating encryption or changing headers. Home Assistant sees the add-on as the connection source. No host ports are published, IP forwarding is blocked inside the container, AppArmor is enabled, and no Supervisor API access is requested. NET_ADMIN is still required within the container. Containers share the host kernel and resources; this is network isolation, not VM-level isolation.
+
+**Upgrading from 0.1.x:** read the [migration steps](wireguard_client/DOCS.md#upgrading-from-01x) before updating. Version 0.2.0 is marked as a breaking update and requires manual approval. Existing options are retained; the backend defaults to `homeassistant:8123`.
 
 [Add this repository to Home Assistant](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FFirestormV%2Fha-wireguard-client)
 
-Alternatively, open the app/add-on store → menu → Repositories and add `https://github.com/FirestormV/ha-wireguard-client`. Install **WireGuard Client**, configure it and start it.
+Alternatively, add `https://github.com/FirestormV/ha-wireguard-client` under app/add-on store → menu → Repositories. Install **WireGuard Client**, configure it and start it manually.
 
-Read the [setup and pfSense guide](wireguard_client/DOCS.md) or [Swedish guide](wireguard_client/DOCS.sv.md). Addresses are examples; supply your own keys locally in Home Assistant.
+[English setup guide](wireguard_client/DOCS.md) · [Svensk guide](wireguard_client/DOCS.sv.md)
 
-## Client public key
+## Public key and languages
 
-Start the add-on and select **Open Web UI** to view and copy the client public key from a read-only field. It is derived from your configured private key at startup. The page is accessible through HA Ingress while the add-on runs, even before a handshake. No private key is displayed.
+Select **Open Web UI** while the add-on is running to view and copy its public key. This key is derived from the configured private key at startup; no private key is shown. A working handshake is not required. Private key generation is currently manual.
 
-## Languages
+Code, logs and primary documentation are English. Configuration labels and the public key page support English and Swedish. YAML keys always remain English.
 
-Source code, logs and primary documentation are in English. Configuration labels and descriptions include English and Swedish translations for Home Assistant. YAML option names stay the same in every language. Markdown documentation has explicit language links; it is not automatically translated.
+## Validation
 
-## Status
-
-Version 0.1.4 is experimental. Nineteen unit tests with mocked system commands pass. GitHub Actions has built the amd64 image and checked Python, WireGuard and iproute2 in the container ([initial build](https://github.com/FirestormV/ha-wireguard-client/actions/runs/37113559854)). The aarch64 build, HA Ingress integration, HA OS permissions, real routes and end-to-end tunnel/HTTP access through CGNAT still require validation on the target system.
+The test suite covers option validation, cleanup, public key display, Ingress access restrictions and TCP relay configuration. CI builds the amd64 image and runs a real WireGuard tunnel between disposable Docker containers, checking HTTP, an upgraded binary TCP stream, stop/start recovery and unchanged host routes.
 
 ```sh
 python3 -m unittest discover -s tests -v
-docker build --build-arg BUILD_ARCH=amd64 -t ha-wireguard-client:0.1.4 wireguard_client
+docker build --build-arg BUILD_ARCH=amd64 -t ha-wireguard-client:test wireguard_client
+# Disposable Linux Docker environment with kernel WireGuard support:
+python3 tests/integration/run.py
 ```
 
-The setup guide includes acceptance checks. Remote LAN forwarding is a planned extension, not implemented in this version.
+Version 0.2.0 remains experimental. HA OS/Supervisor/AppArmor integration, your pfSense/CGNAT connection, aarch64 and actual HA login/WebSocket/TLS behavior require target-system acceptance tests. CI's upgraded binary stream verifies transparent transport, not a complete HA session.
+
+Routing to an entire remote LAN is not implemented. A future gateway should be separate from this HA-only relay and explicitly enabled.

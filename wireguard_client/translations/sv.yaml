@@ -16,7 +16,7 @@ configuration:
     description: "Porten där pfSense lyssnar på WireGuard. Standard: 51820."
   tunnel_address:
     name: "Klientens tunneladress"
-    description: "HA:s IPv4-adress i tunneln med /32-prefix. Exempel: 10.77.0.2/32."
+    description: "Tilläggets IPv4-adress i tunneln med /32-prefix. Exempel: 10.77.0.2/32."
   allowed_ips:
     name: "Nät via pfSense"
     description: "Ange pfSense tunnel-IP och hemnäten för returtrafik. Ange inte fjärr-LAN eller en default route."
@@ -26,3 +26,9 @@ configuration:
   mtu:
     name: "Tunnelns MTU"
     description: "Maximal paketstorlek i tunneln, 1280–1420 byte. Standard: 1380. Prova 1280 om stora överföringar fastnar."
+  homeassistant_host:
+    name: "Home Assistant-m\u00e5l"
+    description: "IPv4-adress eller värdnamn för HA Core som kan nås från tillägget. Standard: homeassistant."
+  homeassistant_port:
+    name: "Home Assistant-m\u00e5l TCP port"
+    description: "TCP-port för HA Core. Standard: 8123. Porten på tunnelsidan är alltid 8123."
