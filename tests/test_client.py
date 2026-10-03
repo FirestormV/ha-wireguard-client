@@ -18,6 +18,23 @@ def options():
 
 
 class ClientTests(unittest.TestCase):
+    def test_log_has_utc_timestamp_and_level(self):
+        import io
+        stream=io.StringIO()
+        original_handlers=c.LOG.handlers[:]
+        original_level=c.LOG.level
+        original_propagate=c.LOG.propagate
+        try:
+            with patch.object(c.sys,'stdout',stream):
+                c.configure_logging()
+            c.LOG.info('Handshake healthy')
+            self.assertRegex(stream.getvalue(), r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \[INFO\] Handshake healthy\n$')
+            self.assertIs(c.LOG.handlers[0].formatter.converter,c.time.gmtime)
+        finally:
+            c.LOG.handlers=original_handlers
+            c.LOG.setLevel(original_level)
+            c.LOG.propagate=original_propagate
+
     def test_valid(self):
         self.assertEqual(c.validate(options()), options())
 

@@ -1,3 +1,8 @@
+# 0.2.5
+
+- Add an explicit UTC timestamp and severity level to every application log line.
+- Retain 0.2.4 full VPN subnet support, verified by ping from two source addresses and HTTP through the tunnel.
+
 # 0.2.4
 
 - Allow a whole tunnel subnet in allowed_ips even when it contains the client tunnel address.

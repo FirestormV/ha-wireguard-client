@@ -2,7 +2,7 @@
 
 [Dokumentation på svenska](DOCS.sv.md)
 
-Version 0.2.4 is experimental. Supports IPv4, one pfSense peer, amd64 and aarch64.
+Version 0.2.5 is experimental. Supports IPv4, one pfSense peer, amd64 and aarch64.
 
 ## Network design
 
@@ -160,3 +160,7 @@ Download report includes the last collected snapshot, capture and backend test. 
 For client tunnel address `192.168.101.20/32`, `allowed_ips: ["192.168.101.0/24"]` permits source addresses from the entire VPN subnet through pfSense and installs its return route inside the container. The client address stays locally assigned as /32, with local delivery taking precedence. Do not also list .1/32 or .11/32 alongside that /24; overlapping entries are rejected. The pfSense peer for this add-on must still use only `192.168.101.20/32`; pfSense routes other peer addresses to their own peers. Firewall rules and each connecting peer's routes must allow access. The subnet must not overlap the container bridge, backend or public endpoint.
 
 Versions through 0.2.3 reject a network containing the client address and remain in setup mode. No handshake or ping is possible in that state; update to 0.2.4 and restart.
+
+## Log timestamps (0.2.5)
+
+Application log lines include UTC date/time and severity, e.g. `2026-10-03T12:45:00Z [INFO] Handshake healthy`. The `Z` means UTC, independent of the browser timezone. Compare with pfSense capture timestamps after accounting for its timezone. Logs do not show private keys or PSKs.

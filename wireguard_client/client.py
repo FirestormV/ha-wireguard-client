@@ -2,6 +2,8 @@
 import base64
 import ipaddress as ip
 import json
+import logging
+import sys
 import os
 from pathlib import Path
 import re
@@ -15,6 +17,18 @@ import time
 IFACE = "wg-ha-client"
 OWNER = "ha-wireguard-client-v1"
 STOP = threading.Event()
+LOG = logging.getLogger("wireguard_client")
+
+
+def configure_logging():
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%dT%H:%M:%SZ")
+    formatter.converter = time.gmtime
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+    LOG.handlers.clear()
+    LOG.addHandler(handler)
+    LOG.setLevel(logging.INFO)
+    LOG.propagate = False
 
 
 class ConfigurationError(ValueError):
@@ -237,26 +251,26 @@ def monitor(o, proxy):
         stamp = int(run("wg", "show", IFACE, "latest-handshakes").split()[-1])
         healthy = stamp > 0 and time.time() - stamp < 180
         if healthy != state:
-            print("Handshake healthy" if healthy else "No recent handshake; check endpoint, peer keys and pfSense WAN rule", flush=True)
+            LOG.info("Handshake healthy" if healthy else "No recent handshake; check endpoint, peer keys and pfSense WAN rule")
             state = healthy
         if not healthy:
             try:
                 endpoint = resolve(o)
                 run("wg", "set", IFACE, "peer", o["peer_public_key"], "endpoint", f'{endpoint}:{o["endpoint_port"]}')
             except (OSError, ValueError, RuntimeError):
-                print("Endpoint refresh failed; retrying in 30 seconds", flush=True)
+                LOG.info("Endpoint refresh failed; retrying in 30 seconds")
 
 
 def main():
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: STOP.set())
     os.umask(0o077)
-    print("Startup stage: validating add-on configuration", flush=True)
+    LOG.info("Startup stage: validating add-on configuration")
     try:
         raw_options = json.loads(Path("/data/options.json").read_text())
     except json.JSONDecodeError:
         raise ConfigurationError("Cannot parse options.json. Save the add-on configuration again.") from None
-    print("Startup stage: loading or creating client identity", flush=True)
+    LOG.info("Startup stage: loading or creating client identity")
     raw_options, public_key = prepare_identity(raw_options)
     setup_error = None
     try:
@@ -264,7 +278,7 @@ def main():
     except ConfigurationError as exc:
         setup_error = str(exc)
     import public_key_ui
-    print("Startup stage: starting Ingress public key page", flush=True)
+    LOG.info("Startup stage: starting Ingress public key page")
     from diagnostics import Diagnostics
     diagnostics = Diagnostics(o if setup_error is None else {}, setup_error)
     ui = public_key_ui.start(public_key, setup_error, diagnostics)
@@ -272,11 +286,11 @@ def main():
     proxy = None
     try:
         if setup_error is not None:
-            print("Setup mode: " + setup_error, flush=True)
-            print("Open Web UI to copy the client public key. Complete Configuration, save and restart. No tunnel has been started.", flush=True)
+            LOG.info("Setup mode: " + setup_error)
+            LOG.info("Open Web UI to copy the client public key. Complete Configuration, save and restart. No tunnel has been started.")
             STOP.wait()
             return
-        print("Startup stage: resolving endpoint and Home Assistant backend", flush=True)
+        LOG.info("Startup stage: resolving endpoint and Home Assistant backend")
         while not STOP.is_set():
             try:
                 endpoint = resolve(o)
@@ -284,21 +298,21 @@ def main():
                 diagnostics.backend = backend
                 break
             except socket.gaierror:
-                print("Waiting for endpoint/backend DNS; retrying in 30 seconds", flush=True)
+                LOG.info("Waiting for endpoint/backend DNS; retrying in 30 seconds")
                 STOP.wait(30)
         else:
             return
         # Only this container network namespace is affected. No IP forwarding.
-        print("Startup stage: applying container forwarding policy", flush=True)
+        LOG.info("Startup stage: applying container forwarding policy")
         run("iptables", "-w", "5", "-P", "FORWARD", "DROP")
-        print("Startup stage: checking routes and creating WireGuard interface", flush=True)
+        LOG.info("Startup stage: checking routes and creating WireGuard interface")
         start(o, endpoint)
         started = True
-        print("Startup stage: starting Home Assistant TCP relay", flush=True)
+        LOG.info("Startup stage: starting Home Assistant TCP relay")
         proxy = start_proxy(o, backend)
         diagnostics.stage = "running"
-        print(f'Tunnel configured; waiting for handshake. PersistentKeepalive={o["persistent_keepalive"]}', flush=True)
-        print("Client public key: " + public_key, flush=True)
+        LOG.info(f'Tunnel configured; waiting for handshake. PersistentKeepalive={o["persistent_keepalive"]}')
+        LOG.info("Client public key: " + public_key)
         monitor(o, proxy)
     finally:
         try:
@@ -314,9 +328,10 @@ def main():
 
 
 if __name__ == "__main__":
+    configure_logging()
     try:
         main()
     except Exception as exc:
         # Deliberately do not expose parser errors, options, keys or subprocess output.
-        print(failure_message(exc), flush=True)
+        LOG.error(failure_message(exc))
         raise SystemExit(1)

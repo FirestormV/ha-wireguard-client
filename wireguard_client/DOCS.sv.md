@@ -2,7 +2,7 @@
 
 [Full documentation in English](DOCS.md)
 
-Version 0.2.4 är experimentell. IPv4, en pfSense-peer, amd64 och aarch64.
+Version 0.2.5 är experimentell. IPv4, en pfSense-peer, amd64 och aarch64.
 
 ## Isolerat nätverk
 
@@ -133,3 +133,7 @@ Med klientadress `192.168.101.20/32` kan **Nät via pfSense** nu vara en enda po
 I pfSense ska just HA-peerens Allowed IPs fortfarande vara enbart `192.168.101.20/32`. Övriga peers har egna adresser där. Brandväggsregler och anslutande klienters routes måste tillåta åtkomsten. Nätet får inte överlappa tilläggets interna nät, Core-målet eller endpoint.
 
 Till och med 0.2.3 blockerades detta /24 och tillägget stannade i installationsläge utan tunnel. Uppdatera till 0.2.4, spara och starta om.
+
+## Tidsstämplar i loggen (0.2.5)
+
+Varje loggrad har datum, tid i UTC och nivå, exempelvis `2026-10-03T12:45:00Z [INFO] Handshake healthy`. `Z` betyder UTC. Ta hänsyn till tidszonen i pfSense när du jämför med paketfångsten. Privata nycklar och PSK loggas inte.
