@@ -94,11 +94,10 @@ class ClientTests(unittest.TestCase):
         ui = Mock()
         o = options()
         public = o['peer_public_key']
-        with patch.object(c.Path, 'read_text', return_value=json.dumps(o)), patch.object(c.signal, 'signal'), patch.object(c.os, 'umask'), patch.object(c, 'run', return_value=public) as run, patch.dict(sys.modules, {'public_key_ui':ui}), patch.object(c, 'resolve', return_value='203.0.113.1'), patch.object(c, 'resolve_backend', return_value='172.30.32.1'), patch.object(c, 'start'), patch.object(c, 'start_proxy'), patch.object(c, 'stop_proxy'), patch.object(c, 'monitor'), patch.object(c, 'remove_owned') as cleanup, patch('builtins.print'):
+        with patch.object(c.Path, 'read_text', return_value=json.dumps(o)), patch.object(c.signal, 'signal'), patch.object(c.os, 'umask'), patch.object(c, 'prepare_identity', return_value=(o,public)), patch.object(c, 'run', return_value=public) as run, patch.dict(sys.modules, {'public_key_ui':ui}), patch.object(c, 'resolve', return_value='203.0.113.1'), patch.object(c, 'resolve_backend', return_value='172.30.32.1'), patch.object(c, 'start'), patch.object(c, 'start_proxy'), patch.object(c, 'stop_proxy'), patch.object(c, 'monitor'), patch.object(c, 'remove_owned') as cleanup, patch('builtins.print'):
             c.main()
-        run.assert_any_call('wg', 'pubkey', input=o['private_key'] + '\n')
         run.assert_any_call('iptables', '-w', '5', '-P', 'FORWARD', 'DROP')
-        ui.start.assert_called_once_with(public)
+        ui.start.assert_called_once_with(public, None)
         ui.start.return_value.shutdown.assert_called_once()
         ui.start.return_value.server_close.assert_called_once()
         cleanup.assert_called_once()
@@ -155,13 +154,51 @@ class ClientTests(unittest.TestCase):
         self.assertIn('192.168.10.0/24', c.failure_message(caught.exception))
         self.assertIn('container route', c.failure_message(caught.exception))
 
-    def test_empty_configuration_never_reaches_network_setup(self):
+    def test_empty_configuration_stays_in_setup_without_network_changes(self):
         import sys
-        o = options(); o['private_key'] = ''; o['peer_public_key'] = ''
-        with patch.object(c.Path,'read_text',return_value=json.dumps(o)), patch.object(c.signal,'signal'), patch.object(c.os,'umask'), patch.object(c,'run') as run, patch.object(c,'start') as start, patch('builtins.print'), self.assertRaises(c.ConfigurationError):
+        o = options(); o['peer_public_key'] = ''
+        ui = Mock()
+        with patch.object(c.Path,'read_text',return_value=json.dumps(o)), patch.object(c.signal,'signal'), patch.object(c.os,'umask'), patch.object(c, 'prepare_identity', return_value=(o, options()['peer_public_key'])), patch.object(c,'run') as run, patch.object(c,'start') as start, patch.object(c.STOP, 'wait') as wait, patch.dict(sys.modules, {'public_key_ui':ui}), patch('builtins.print'):
             c.main()
         run.assert_not_called()
         start.assert_not_called()
+        wait.assert_called_once_with()
+        self.assertIn('peer_public_key is empty', ui.start.call_args.args[1])
+        ui.start.return_value.shutdown.assert_called_once()
+
+    def test_identity_generated_once_and_persisted(self):
+        import tempfile
+        private = options()['private_key']; public = options()['peer_public_key']
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'client-private.key'
+            with patch.object(c, 'run', side_effect=[private,public]) as run:
+                first, first_public = c.prepare_identity({'private_key':''}, path)
+            run.assert_any_call('wg','genkey')
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(path.read_text().strip(), private)
+            with patch.object(c, 'run', return_value=public) as run:
+                second, second_public = c.prepare_identity({'private_key':''}, path)
+            run.assert_called_once_with('wg','pubkey',input=private+'\n')
+            self.assertEqual((first,first_public), (second,second_public))
+
+    def test_supplied_identity_is_preserved_when_field_cleared(self):
+        import tempfile
+        private = options()['private_key']; public = options()['peer_public_key']
+        with tempfile.TemporaryDirectory() as directory, patch.object(c, 'run', return_value=public) as run:
+            path = Path(directory) / 'client-private.key'
+            c.prepare_identity({'private_key':private}, path)
+            result, _ = c.prepare_identity({'private_key':''}, path)
+            self.assertEqual(result['private_key'],private)
+            self.assertFalse(any(call.args == ('wg','genkey') for call in run.call_args_list))
+
+    def test_corrupt_saved_identity_never_silently_rotates(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory, patch.object(c, 'run') as run:
+            path = Path(directory) / 'client-private.key'; path.write_text('corrupted-secret')
+            with self.assertRaises(c.ConfigurationError):
+                c.prepare_identity({'private_key':''},path)
+            run.assert_not_called()
+            self.assertEqual(path.read_text(),'corrupted-secret')
 
     def test_secret_not_in_error(self):
         import subprocess

@@ -54,7 +54,7 @@ try:
         options=dict(private_key=client_private,peer_public_key=peer_public,preshared_key='',endpoint_host=address('wg-ha-peer'),endpoint_port=51820,tunnel_address='10.77.0.2/32',allowed_ips=['10.77.0.1/32'],persistent_keepalive=25,mtu=1380,homeassistant_host='wg-ha-backend',homeassistant_port=8123)
         p=Path(temp)/'options.json'; p.write_text(json.dumps(options)); p.chmod(0o600)
         before=cmd('ip','-j','-4','route','show','table','all')
-        cmd('docker','run','-d','--name','wg-ha-client','--network',NETWORK,'--cap-add','NET_ADMIN','-v',f'{temp}:/data:ro',IMAGE)
+        cmd('docker','run','-d','--name','wg-ha-client','--network',NETWORK,'--cap-add','NET_ADMIN','-v',f'{temp}:/data',IMAGE)
         wait_http()
         assert cmd('ip','-j','-4','route','show','table','all') == before, 'Host routes changed'
         assert 'wg-ha-client' not in cmd('ip','-j','link','show'), 'Tunnel leaked into host namespace'

@@ -1,7 +1,7 @@
 configuration:
   private_key:
     name: "Client private key"
-    description: "The private WireGuard key of this HA client. Never share this key."
+    description: "Leave empty to automatically generate and reuse a saved client key. Optionally paste an existing private key to import it. Never share it."
   peer_public_key:
     name: "pfSense public key"
     description: "The public key of the pfSense tunnel, not the client public key."

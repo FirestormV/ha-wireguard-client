@@ -20,7 +20,7 @@ Alternatively, add `https://github.com/FirestormV/ha-wireguard-client` under app
 
 ## Public key and languages
 
-Select **Open Web UI** while the add-on is running to view and copy its public key. This key is derived from the configured private key at startup; no private key is shown. A working handshake is not required. Private key generation is currently manual.
+Select **Open Web UI** while the add-on is running to view and copy its public key. This key is derived from the saved or explicitly supplied private key at startup; no private key is shown. A working handshake is not required. On first start, leaving the private key empty generates a persistent key automatically. The public key page opens even before the peer configuration is complete. Copy it to pfSense, complete Configuration, save and restart.
 
 Code, logs and primary documentation are English. Configuration labels and the public key page support English and Swedish. YAML keys always remain English.
 
@@ -37,6 +37,6 @@ docker build --build-arg BUILD_ARCH=amd64 -t ha-wireguard-client:test wireguard_
 python3 tests/integration/run.py
 ```
 
-Version 0.2.1 remains experimental. HA OS/Supervisor/AppArmor integration, your pfSense/CGNAT connection, aarch64 and actual HA login/WebSocket/TLS behavior require target-system acceptance tests. CI's upgraded binary stream verifies transparent transport, not a complete HA session.
+Version 0.2.2 remains experimental. HA OS/Supervisor/AppArmor integration, your pfSense/CGNAT connection, aarch64 and actual HA login/WebSocket/TLS behavior require target-system acceptance tests. CI's upgraded binary stream verifies transparent transport, not a complete HA session.
 
 Routing to an entire remote LAN is not implemented. A future gateway should be separate from this HA-only relay and explicitly enabled.

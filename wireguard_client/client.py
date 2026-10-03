@@ -50,6 +50,43 @@ def key(value, field="WireGuard key"):
     return value
 
 
+def prepare_identity(options, path=Path("/data/client-private.key")):
+    """Retain the last selected identity across restarts, updates and options edits."""
+    if not isinstance(options, dict):
+        raise ConfigurationError("Configuration must be an object.")
+    o = dict(options)
+    supplied = o.get("private_key", "")
+    if not isinstance(supplied, str):
+        raise ConfigurationError("private_key must be text or empty for automatic key management.")
+    if supplied.strip():
+        private = key(supplied, "private_key")
+    elif path.exists():
+        private = key(path.read_text(), "Saved client private key")
+    else:
+        private = key(run("wg", "genkey"), "Generated client private key")
+    public = key(run("wg", "pubkey", input=private + "\n"), "Derived public key")
+    # Atomic, durable replacement avoids truncated identities after a power failure.
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as f:
+            temporary = Path(f.name)
+            os.fchmod(f.fileno(), 0o600)
+            f.write(private + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    o["private_key"] = private
+    return o, public
+
+
 def validate(o):
     if not isinstance(o, dict):
         raise ConfigurationError("Configuration must be an object.")
@@ -219,16 +256,24 @@ def main():
         raw_options = json.loads(Path("/data/options.json").read_text())
     except json.JSONDecodeError:
         raise ConfigurationError("Cannot parse options.json. Save the add-on configuration again.") from None
-    o = validate(raw_options)
-    # Derive through stdin: the private key never appears in process arguments.
-    print("Startup stage: deriving client public key", flush=True)
-    public_key = key(run("wg", "pubkey", input=o["private_key"] + "\n"), "Derived public key")
+    print("Startup stage: loading or creating client identity", flush=True)
+    raw_options, public_key = prepare_identity(raw_options)
+    setup_error = None
+    try:
+        o = validate(raw_options)
+    except ConfigurationError as exc:
+        setup_error = str(exc)
     import public_key_ui
     print("Startup stage: starting Ingress public key page", flush=True)
-    ui = public_key_ui.start(public_key)
+    ui = public_key_ui.start(public_key, setup_error)
     started = False
     proxy = None
     try:
+        if setup_error is not None:
+            print("Setup mode: " + setup_error, flush=True)
+            print("Open Web UI to copy the client public key. Complete Configuration, save and restart. No tunnel has been started.", flush=True)
+            STOP.wait()
+            return
         print("Startup stage: resolving endpoint and Home Assistant backend", flush=True)
         while not STOP.is_set():
             try:

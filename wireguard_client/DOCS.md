@@ -2,7 +2,7 @@
 
 [Dokumentation på svenska](DOCS.sv.md)
 
-Version 0.2.1 is experimental. Supports IPv4, one pfSense peer, amd64 and aarch64.
+Version 0.2.2 is experimental. Supports IPv4, one pfSense peer, amd64 and aarch64.
 
 ## Network design
 
@@ -43,13 +43,20 @@ Version 0.1.x used host networking. Version 0.2.0 deliberately removes it and is
 
 The tunnel URL remains `http://10.77.0.2:8123` with the example settings. Access to other host services or a remote LAN through the old host interface is not provided. If Core uses TLS, use HTTPS with a hostname matching its certificate; the relay does not issue certificates.
 
-## Before the first start
+## First start: no keys required
 
-You can edit the **Configuration** tab while the add-on is stopped. Fill in the client private key, pfSense public key, endpoint and network settings, then save and start. The blank default keys are placeholders; no keys are generated automatically. The public key page is available only after valid configuration has been saved and the add-on starts. Version 0.2.1 reports the missing field explicitly and does not modify networking when configuration validation fails.
+1. Leave `private_key` and `peer_public_key` empty and start the add-on.
+2. Select **Open Web UI**. The add-on generates a client key pair and displays its public key. With incomplete tunnel options it stays in setup mode without creating a tunnel or changing routes/firewall rules.
+3. Copy the public key into the client peer in pfSense.
+4. Fill in the pfSense public key, endpoint and networks under **Configuration**. Leave `private_key` empty to keep using the managed key. Save and restart.
+
+The private key is stored in `/data/client-private.key` with permissions 0600, written atomically and included in add-on data backups. It survives restarts and updates. It is never displayed in the web UI or logs. Protect backups; reinstalling without restoring the add-on data creates a different identity. Do not clone the same identity onto multiple simultaneous clients.
+
+An explicitly supplied private key takes precedence and becomes the saved identity. Clearing the field later reuses that last saved key. Invalid stored keys cause an error rather than silently generating a replacement. Invalid tunnel settings keep the public key page available in setup mode; correct them and restart. Changes are not automatically applied while running.
 
 ## Keys and options
 
-Generate the client key pair on a trusted system with WireGuard installed:
+Automatic key management is recommended. To import an existing identity instead, generate a client key pair on a trusted system with WireGuard installed:
 
 ```sh
 umask 077
@@ -60,7 +67,7 @@ wg pubkey < ha-private.key > ha-public.key
 The client private key belongs in the add-on. Put the client public key in the pfSense peer. Put the **pfSense tunnel's** public key in `peer_public_key`. An optional PSK generated with `wg genpsk` must match on both sides.
 
 ```yaml
-private_key: "YOUR_CLIENT_PRIVATE_KEY"
+private_key: ""  # Automatically generate/reuse the saved client key
 peer_public_key: "YOUR_PFSENSE_PUBLIC_KEY"
 preshared_key: ""
 endpoint_host: "vpn.example.com"
@@ -77,7 +84,7 @@ homeassistant_port: 8123
 
 | Option | Meaning |
 |---|---|
-| `private_key` | Required client private key |
+| `private_key` | Empty: generate/reuse saved key; nonempty: import this private key |
 | `peer_public_key` | Required pfSense public key |
 | `preshared_key` | Optional shared secret; empty disables it |
 | `endpoint_host` | pfSense public IPv4 or DNS name |
@@ -97,7 +104,7 @@ Secrets remain in Supervisor options and may be in backups. Password fields mask
 
 ## View the public key
 
-Start with valid configuration, then select **Open Web UI**. A read-only field and copy button display the public key derived at startup. Restart after changing the private key. The page is available during DNS retries and handshake waits, but not when the process is stopped or fails to start. It does not generate private keys.
+Start the add-on, then select **Open Web UI**, even with the initial blank key fields. A read-only field and copy button display the public key derived at startup. Restart after changing the private key. The page is available during DNS retries and handshake waits, but not when the process is stopped or fails to start. The first start generates and stores a private key automatically when no saved or supplied key exists.
 
 HA Ingress authenticates access. Only the actual Supervisor source address 172.30.32.2 is allowed. Port 8099 is internal to the container and is not published on the host. Choose English or Swedish on the page; the initial selection follows browser language. If clipboard access is unavailable, the key is selected for manual copying.
 

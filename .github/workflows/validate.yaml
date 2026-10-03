@@ -15,3 +15,5 @@ jobs:
         run: docker run --rm ha-wireguard-client:test sh -c 'python3 --version && wg --version && ip -Version'
       - name: Isolated WireGuard integration test
         run: python3 tests/integration/run.py
+      - name: First-start setup and key persistence
+        run: python3 tests/integration/setup.py

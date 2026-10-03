@@ -1,7 +1,7 @@
 configuration:
   private_key:
     name: "Klientens privata nyckel"
-    description: "Den privata WireGuard-nyckeln för denna HA-klient. Dela aldrig nyckeln."
+    description: "Lämna tom för att automatiskt skapa och återanvända en sparad klientnyckel. Klistra valfritt in en egen privat nyckel för att importera den. Dela aldrig nyckeln."
   peer_public_key:
     name: "pfSense publika nyckel"
     description: "Den publika nyckeln för pfSense-tunneln, inte klientens publika nyckel."

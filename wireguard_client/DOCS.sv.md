@@ -2,7 +2,7 @@
 
 [Full documentation in English](DOCS.md)
 
-Version 0.2.1 är experimentell. IPv4, en pfSense-peer, amd64 och aarch64.
+Version 0.2.2 är experimentell. IPv4, en pfSense-peer, amd64 och aarch64.
 
 ## Isolerat nätverk
 
@@ -27,15 +27,22 @@ Containern delar fortfarande kärna, CPU och minne med värden. Det här begrän
 
 Tunneladressen fungerar som tidigare för HA, exempelvis `http://10.77.0.2:8123`. Andra tjänster på HA-värden och hela fjärr-LAN exponeras inte. Om Core använder TLS måste du använda HTTPS med värdnamn som matchar dess certifikat. Proxyn skapar inga certifikat.
 
-## Före första starten
+## Första start: inga nycklar behövs
 
-Fliken **Konfiguration** kan redigeras medan tillägget är stoppat. Fyll i klientens privata nyckel, pfSense publika nyckel, endpoint och nätinställningar. Spara och starta sedan. Standardvärdenas tomma nycklar är platshållare; inga nycklar genereras automatiskt. Sidan med publik nyckel fungerar efter att giltig konfiguration sparats och tillägget startat. Version 0.2.1 talar om vilket fält som saknas och ändrar inget nätverk när konfigurationskontrollen stoppar starten.
+1. Lämna `private_key` och `peer_public_key` tomma och starta tillägget.
+2. Välj **Öppna webbgränssnitt**. Tillägget skapar ett klientnyckelpar och visar den publika nyckeln. Med ofärdig tunnelkonfiguration stannar det i installationsläge utan att skapa tunnel eller ändra routes/brandvägg.
+3. Kopiera den publika nyckeln till klientens peer i pfSense.
+4. Fyll i pfSense publika nyckel, endpoint och nät under **Konfiguration**. Lämna `private_key` tom för att använda den sparade nyckeln. Spara och starta om.
+
+Privata nyckeln sparas atomiskt med rättigheter 0600 i `/data/client-private.key`, behålls vid omstart/uppdatering och ingår i säkerhetskopior av tilläggets data. Den visas aldrig i webbsidan eller loggen. Skydda säkerhetskopiorna. Ominstallation utan återställda data ger en ny identitet; använd inte samma identitet på flera samtidiga klienter.
+
+En egen privat nyckel i konfigurationen används och sparas som aktuell identitet. Om fältet sedan töms återanvänds den sist sparade nyckeln. En skadad sparad nyckel ersätts inte automatiskt. Felaktiga tunnelinställningar lämnar webbsidan tillgänglig i installationsläge. Rätta dem, spara och starta om; ändringar tillämpas inte automatiskt under körning.
 
 ## Installation och nycklar
 
 Lägg till `https://github.com/FirestormV/ha-wireguard-client` i tilläggsbutikens Repositories, installera, konfigurera och starta manuellt. Lokalt kan katalogen `wireguard_client` kopieras till `/addons/wireguard_client` via Samba/SSH. Supervisor bygger imagen och behöver internetåtkomst.
 
-Generera ett separat klientnyckelpar på en betrodd dator eller i pfSense Shell med WireGuard-verktyg:
+Automatisk nyckelhantering rekommenderas. Om du vill importera egna nycklar kan du generera dem på en betrodd dator eller i pfSense Shell:
 
 ```sh
 umask 077
@@ -46,7 +53,7 @@ wg pubkey < ha-private.key > ha-public.key
 Privata klientnyckeln hör hemma i tillägget. Publika klientnyckeln ska till klientens peer i pfSense. pfSense-tunnelns publika nyckel ska till `peer_public_key`. Valfri delad PSK från `wg genpsk` måste matcha på båda sidor.
 
 ```yaml
-private_key: "KLIENTENS_PRIVATA_NYCKEL"
+private_key: ""  # Skapa/återanvänd sparad klientnyckel automatiskt
 peer_public_key: "PFSENSE_PUBLIKA_NYCKEL"
 preshared_key: ""
 endpoint_host: "vpn.example.com"
@@ -71,7 +78,7 @@ Nycklarna lagras i Supervisors inställningar och kan ingå i säkerhetskopior. 
 
 ## Visa publik nyckel
 
-Med giltig konfiguration och startat tillägg: välj **Öppna webbgränssnitt**. Sidan visar den publika nyckeln i ett skrivskyddat fält med kopieringsknapp. Den härleds från privata nyckeln vid start; starta om efter ändring. Ingen privat nyckel skapas eller visas på sidan.
+Med startat tillägg, även när nyckelfälten är tomma: välj **Öppna webbgränssnitt**. Sidan visar den publika nyckeln i ett skrivskyddat fält med kopieringsknapp. Den härleds från privata nyckeln vid start; starta om efter ändring. Privata nyckeln skapas vid första start om den saknas, men visas aldrig på sidan.
 
 Sidan fungerar under DNS-väntan och utan handshake, men inte om processen är stoppad eller misslyckas vid start. HA Ingress ger åtkomst; endast Supervisors källadress 172.30.32.2 tillåts. Port 8099 finns bara i tillägget. Engelska/svenska kan väljas på sidan. Vid nekad automatisk kopiering markeras nyckeln för manuell kopiering.
 

@@ -43,6 +43,11 @@ class UITests(unittest.TestCase):
             error.assert_called_once_with(404)
             self.assertEqual(body, b'')
 
+    def test_setup_help_is_rendered_and_escaped(self):
+        body = ui.render(PUBLIC, 'peer_public_key is empty <unsafe>')
+        self.assertIn(b'peer_public_key is empty &lt;unsafe&gt;',body)
+        self.assertIn(b'Leave Client private key empty',body)
+
     def test_render_escapes_input(self):
         body = ui.render('\"><script>alert(1)</script>')
         self.assertNotIn(b'\"><script>alert(1)</script>', body)

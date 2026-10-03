@@ -1,3 +1,11 @@
+# 0.2.2
+
+- Generate and persist a client identity automatically when private_key is empty.
+- Allow first start and public key display before pfSense configuration is complete.
+- Stay in setup mode without tunnel/network changes until configuration is valid.
+- Preserve generated/imported identities across restarts and updates using atomic 0600 storage.
+- Add first-start, persistence and setup-mode regression tests.
+
 # 0.2.1
 
 - Explain that required keys must be filled in on the Configuration tab before starting.

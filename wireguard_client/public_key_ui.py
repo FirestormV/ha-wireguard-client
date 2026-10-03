@@ -6,7 +6,8 @@ import threading
 INGRESS_SOURCE = "172.30.32.2"
 
 
-def render(public_key):
+def render(public_key, setup_error=None):
+    message = html.escape(setup_error or "", quote=True)
     return ('''<!doctype html>
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WireGuard Client</title>
@@ -20,6 +21,8 @@ button, select { padding: 10px 16px; font: inherit; }
 </style>
 <select id="language" aria-label="Language"><option value="en">English</option><option value="sv">Svenska</option></select>
 <h1>WireGuard Client</h1>
+<p id="steps">Your client key is ready. Copy the public key to the pfSense peer, then fill in the pfSense public key, endpoint and networks in Configuration. Save and restart the add-on. Leave Client private key empty to keep using the saved key.</p>
+<p role="status">''' + message + '''</p>
 <label id="label" for="key">Client public key</label>
 <input id="key" readonly spellcheck="false" value="''' + html.escape(public_key, quote=True) + '''">
 <button id="copy" type="button">Copy public key</button>
@@ -28,14 +31,14 @@ button, select { padding: 10px 16px; font: inherit; }
 <p id="note">Derived from the private key loaded at startup. Restart the add-on after changing its configuration. A working tunnel is not required to view this key.</p>
 <script>
 const texts = {
-en: {label:'Client public key',copy:'Copy public key',help:'Paste this into the Public Key field of the client peer in pfSense.',note:'Derived from the private key loaded at startup. Restart the add-on after changing its configuration. A working tunnel is not required to view this key.',copied:'Copied.',manual:'Key selected. Use your device’s copy command.'},
-sv: {label:'Klientens publika nyckel',copy:'Kopiera publik nyckel',help:'Klistra in den i fältet Public Key för klientens peer i pfSense.',note:'Beräknad från den privata nyckel som lästes in vid start. Starta om tillägget efter konfigurationsändringar. Tunneln behöver inte ha kontakt för att visa nyckeln.',copied:'Kopierad.',manual:'Nyckeln är markerad. Använd enhetens kopieringskommando.'}
+en: {steps:'Your client key is ready. Copy the public key to the pfSense peer, then fill in the pfSense public key, endpoint and networks in Configuration. Save and restart the add-on. Leave Client private key empty to keep using the saved key.',label:'Client public key',copy:'Copy public key',help:'Paste this into the Public Key field of the client peer in pfSense.',note:'Derived from the private key loaded at startup. Restart the add-on after changing its configuration. A working tunnel is not required to view this key.',copied:'Copied.',manual:'Key selected. Use your device’s copy command.'},
+sv: {steps:'Din klientnyckel är klar. Kopiera den publika nyckeln till klientens peer i pfSense. Fyll sedan i pfSense publika nyckel, endpoint och nät under Konfiguration. Spara och starta om tillägget. Lämna Klientens privata nyckel tom för att fortsätta använda den sparade nyckeln.',label:'Klientens publika nyckel',copy:'Kopiera publik nyckel',help:'Klistra in den i fältet Public Key för klientens peer i pfSense.',note:'Beräknad från den privata nyckel som lästes in vid start. Starta om tillägget efter konfigurationsändringar. Tunneln behöver inte ha kontakt för att visa nyckeln.',copied:'Kopierad.',manual:'Nyckeln är markerad. Använd enhetens kopieringskommando.'}
 };
 const language = document.getElementById('language');
 language.value = navigator.language.toLowerCase().startsWith('sv') ? 'sv' : 'en';
 function update() {
  document.documentElement.lang = language.value;
- for (const id of ['label','copy','help','note']) document.getElementById(id).textContent = texts[language.value][id];
+ for (const id of ['steps','label','copy','help','note']) document.getElementById(id).textContent = texts[language.value][id];
  document.getElementById('feedback').textContent = '';
 }
 language.onchange = update; update();
@@ -47,8 +50,8 @@ document.getElementById('copy').onclick = async () => {
 </script></html>''').encode()
 
 
-def handler_for(public_key):
-    page = render(public_key)
+def handler_for(public_key, setup_error=None):
+    page = render(public_key, setup_error)
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -75,8 +78,8 @@ def handler_for(public_key):
     return Handler
 
 
-def start(public_key):
+def start(public_key, setup_error=None):
     # Port 8099 exists only inside this add-on network; no host port is published.
-    server = ThreadingHTTPServer(("0.0.0.0", 8099), handler_for(public_key))
+    server = ThreadingHTTPServer(("0.0.0.0", 8099), handler_for(public_key, setup_error))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
