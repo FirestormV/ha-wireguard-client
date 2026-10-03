@@ -13,3 +13,5 @@ jobs:
         run: docker build --build-arg BUILD_ARCH=amd64 -t ha-wireguard-client:test wireguard_client
       - name: Check installed tools
         run: docker run --rm ha-wireguard-client:test sh -c 'python3 --version && wg --version && ip -Version'
+      - name: Isolated WireGuard integration test
+        run: python3 tests/integration/run.py

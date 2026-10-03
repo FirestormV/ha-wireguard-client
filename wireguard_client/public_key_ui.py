@@ -1,24 +1,9 @@
 """Read-only public key page, accessible exclusively through HA Ingress."""
 import html
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import json
-import os
 import threading
-from urllib.request import Request, build_opener, ProxyHandler
 
 INGRESS_SOURCE = "172.30.32.2"
-
-
-def ingress_port():
-    request = Request("http://supervisor/addons/self/info", headers={
-        "Authorization": "Bearer " + os.environ["SUPERVISOR_TOKEN"]})
-    # Never route the Supervisor token through an environment HTTP proxy.
-    with build_opener(ProxyHandler({})).open(request, timeout=10) as response:
-        result = json.load(response)
-    port = result["data"]["ingress_port"]
-    if result.get("result") != "ok" or type(port) is not int or not 1 <= port <= 65535:
-        raise ValueError("Supervisor did not provide a valid ingress port")
-    return port
 
 
 def render(public_key):
@@ -91,7 +76,7 @@ def handler_for(public_key):
 
 
 def start(public_key):
-    # HA host-network add-ons use a Supervisor-assigned port to avoid collisions.
-    server = ThreadingHTTPServer(("0.0.0.0", ingress_port()), handler_for(public_key))
+    # Port 8099 exists only inside this add-on network; no host port is published.
+    server = ThreadingHTTPServer(("0.0.0.0", 8099), handler_for(public_key))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server

@@ -1,4 +1,4 @@
-"""One peer, IPv4 split tunnel. No shell hooks or host firewall mutations."""
+"""Isolated IPv4 tunnel with a single TCP relay to Home Assistant."""
 import base64
 import ipaddress as ip
 import json
@@ -37,15 +37,18 @@ def key(value):
 
 def validate(o):
     o = dict(o)
+    o.setdefault("homeassistant_host", "homeassistant")
+    o.setdefault("homeassistant_port", 8123)
     o.setdefault("persistent_keepalive", 25)  # Backward-compatible v0.1.0 options.
     for name in ("private_key", "peer_public_key"):
         o[name] = key(o[name])
     if o.get("preshared_key"):
         o["preshared_key"] = key(o["preshared_key"])
-    host = o["endpoint_host"]
-    if not isinstance(host, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", host):
-        raise ValueError("endpoint_host must be an IPv4 address or DNS hostname")
-    for field, low, high in (("endpoint_port", 1, 65535), ("mtu", 1280, 1420), ("persistent_keepalive", 0, 65535)):
+    for field in ("endpoint_host", "homeassistant_host"):
+        host = o[field]
+        if not isinstance(host, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", host):
+            raise ValueError(f"{field} must be an IPv4 address or DNS hostname")
+    for field, low, high in (("endpoint_port", 1, 65535), ("homeassistant_port", 1, 65535), ("mtu", 1280, 1420), ("persistent_keepalive", 0, 65535)):
         if type(o[field]) is not int or not low <= o[field] <= high:
             raise ValueError(f"Invalid {field}")
     addr = ip.IPv4Interface(o["tunnel_address"])
@@ -120,9 +123,46 @@ def start(o, endpoint):
         raise
 
 
-def monitor(o):
+def resolve_backend(o):
+    address = socket.getaddrinfo(o["homeassistant_host"], o["homeassistant_port"], socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
+    target = ip.IPv4Address(address)
+    if target == ip.IPv4Interface(o["tunnel_address"]).ip or any(target in ip.IPv4Network(n) for n in o["allowed_ips"]):
+        raise ValueError("Home Assistant backend would be routed into the tunnel")
+    return address
+
+
+def start_proxy(o, backend):
+    address = str(ip.IPv4Interface(o["tunnel_address"]).ip)
+    return subprocess.Popen([
+        "socat",
+        f"TCP4-LISTEN:8123,bind={address},reuseaddr,fork,max-children=32",
+        f"TCP4:{backend}:{o['homeassistant_port']},connect-timeout=10",
+    ], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+       stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def stop_proxy(proxy):
+    # Stop active relay children as well as the listener.
+    try:
+        os.killpg(proxy.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        proxy.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(proxy.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    proxy.wait(timeout=5)
+
+
+def monitor(o, proxy):
     state = None
     while not STOP.wait(30):
+        if proxy.poll() is not None:
+            raise RuntimeError("Home Assistant relay exited")
         stamp = int(run("wg", "show", IFACE, "latest-handshakes").split()[-1])
         healthy = stamp > 0 and time.time() - stamp < 180
         if healthy != state:
@@ -146,25 +186,34 @@ def main():
     import public_key_ui
     ui = public_key_ui.start(public_key)
     started = False
+    proxy = None
     try:
         while not STOP.is_set():
             try:
                 endpoint = resolve(o)
+                backend = resolve_backend(o)
                 break
             except socket.gaierror:
-                print("Waiting for endpoint DNS; retrying in 30 seconds", flush=True)
+                print("Waiting for endpoint/backend DNS; retrying in 30 seconds", flush=True)
                 STOP.wait(30)
         else:
             return
+        # Only this container network namespace is affected. No IP forwarding.
+        run("iptables", "-w", "5", "-P", "FORWARD", "DROP")
         start(o, endpoint)
         started = True
+        proxy = start_proxy(o, backend)
         print(f'Tunnel configured; waiting for handshake. PersistentKeepalive={o["persistent_keepalive"]}', flush=True)
         print("Client public key: " + public_key, flush=True)
-        monitor(o)
+        monitor(o, proxy)
     finally:
         try:
-            if started:
-                remove_owned()
+            try:
+                if proxy is not None:
+                    stop_proxy(proxy)
+            finally:
+                if started:
+                    remove_owned()
         finally:
             ui.shutdown()
             ui.server_close()

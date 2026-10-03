@@ -12,7 +12,7 @@ spec.loader.exec_module(c)
 
 
 def options():
-    return dict(private_key=base64.b64encode(b'x'*32).decode(), peer_public_key=base64.b64encode(b'y'*32).decode(), preshared_key='', endpoint_host='vpn.example.com', endpoint_port=51820, tunnel_address='10.77.0.2/32', allowed_ips=['10.77.0.1/32','192.168.10.0/24'], mtu=1380, persistent_keepalive=25)
+    return dict(private_key=base64.b64encode(b'x'*32).decode(), peer_public_key=base64.b64encode(b'y'*32).decode(), preshared_key='', endpoint_host='vpn.example.com', endpoint_port=51820, tunnel_address='10.77.0.2/32', allowed_ips=['10.77.0.1/32','192.168.10.0/24'], mtu=1380, persistent_keepalive=25, homeassistant_host="homeassistant", homeassistant_port=8123)
 
 
 class ClientTests(unittest.TestCase):
@@ -94,13 +94,36 @@ class ClientTests(unittest.TestCase):
         ui = Mock()
         o = options()
         public = o['peer_public_key']
-        with patch.object(c.Path, 'read_text', return_value=json.dumps(o)), patch.object(c.signal, 'signal'), patch.object(c.os, 'umask'), patch.object(c, 'run', return_value=public) as run, patch.dict(sys.modules, {'public_key_ui':ui}), patch.object(c, 'resolve', return_value='203.0.113.1'), patch.object(c, 'start'), patch.object(c, 'monitor'), patch.object(c, 'remove_owned') as cleanup, patch('builtins.print'):
+        with patch.object(c.Path, 'read_text', return_value=json.dumps(o)), patch.object(c.signal, 'signal'), patch.object(c.os, 'umask'), patch.object(c, 'run', return_value=public) as run, patch.dict(sys.modules, {'public_key_ui':ui}), patch.object(c, 'resolve', return_value='203.0.113.1'), patch.object(c, 'resolve_backend', return_value='172.30.32.1'), patch.object(c, 'start'), patch.object(c, 'start_proxy'), patch.object(c, 'stop_proxy'), patch.object(c, 'monitor'), patch.object(c, 'remove_owned') as cleanup, patch('builtins.print'):
             c.main()
-        run.assert_called_once_with('wg', 'pubkey', input=o['private_key'] + '\n')
+        run.assert_any_call('wg', 'pubkey', input=o['private_key'] + '\n')
+        run.assert_any_call('iptables', '-w', '5', '-P', 'FORWARD', 'DROP')
         ui.start.assert_called_once_with(public)
         ui.start.return_value.shutdown.assert_called_once()
         ui.start.return_value.server_close.assert_called_once()
         cleanup.assert_called_once()
+
+    def test_backend_tunnel_loop_rejected(self):
+        for address in ('10.77.0.2', '192.168.10.42'):
+            with patch.object(c.socket, 'getaddrinfo', return_value=[(None,None,None,None,(address,8123))]), self.assertRaises(ValueError):
+                c.resolve_backend(options())
+
+    def test_backend_valid(self):
+        with patch.object(c.socket, 'getaddrinfo', return_value=[(None,None,None,None,('172.30.32.1',8123))]):
+            self.assertEqual(c.resolve_backend(options()), '172.30.32.1')
+
+    def test_backend_options_reject_injection(self):
+        for field, value in [('homeassistant_host','ha,exec=bad'), ('homeassistant_port',0), ('homeassistant_port',True)]:
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                o = options(); o[field] = value; c.validate(o)
+
+    def test_proxy_binds_tunnel_only(self):
+        with patch.object(c.subprocess, 'Popen') as popen:
+            c.start_proxy(options(), '172.30.32.1')
+        args = popen.call_args.args[0]
+        self.assertEqual(args[1], 'TCP4-LISTEN:8123,bind=10.77.0.2,reuseaddr,fork,max-children=32')
+        self.assertEqual(args[2], 'TCP4:172.30.32.1:8123,connect-timeout=10')
+        self.assertTrue(popen.call_args.kwargs['start_new_session'])
 
     def test_secret_not_in_error(self):
         import subprocess

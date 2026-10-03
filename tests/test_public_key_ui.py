@@ -48,18 +48,4 @@ class UITests(unittest.TestCase):
         self.assertNotIn(b'\"><script>alert(1)</script>', body)
         self.assertIn(b'&lt;script&gt;', body)
 
-    def test_supervisor_port(self):
-        with patch.dict(ui.os.environ, {'SUPERVISOR_TOKEN': 'test-token'}), patch.object(ui, 'build_opener') as opener:
-            opener.return_value.open.return_value.__enter__.return_value = io.StringIO('{"result":"ok","data":{"ingress_port":12345}}')
-            self.assertEqual(ui.ingress_port(), 12345)
-            req = opener.return_value.open.call_args.args[0]
-            self.assertEqual(req.full_url, 'http://supervisor/addons/self/info')
-            self.assertEqual(req.get_header('Authorization'), 'Bearer test-token')
-
-    def test_invalid_supervisor_ports(self):
-        for port in (0, 65536, True, '12345'):
-            with self.subTest(port=port), patch.dict(ui.os.environ, {'SUPERVISOR_TOKEN': 'test-token'}), patch.object(ui, 'build_opener') as opener:
-                opener.return_value.open.return_value.__enter__.return_value = io.StringIO(ui.json.dumps({'result':'ok','data':{'ingress_port':port}}))
-                with self.assertRaises(ValueError): ui.ingress_port()
-
 if __name__ == '__main__': unittest.main()
