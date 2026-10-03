@@ -1,0 +1,15 @@
+name: Validate add-on
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Build amd64 image
+        run: docker build --build-arg BUILD_ARCH=amd64 -t ha-wireguard-client:test wireguard_client
+      - name: Check installed tools
+        run: docker run --rm ha-wireguard-client:test sh -c 'python3 --version && wg --version && ip -Version'
