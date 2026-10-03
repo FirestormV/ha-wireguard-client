@@ -2,7 +2,7 @@
 
 [Full documentation in English](DOCS.md)
 
-Version 0.2.0 är experimentell. IPv4, en pfSense-peer, amd64 och aarch64.
+Version 0.2.1 är experimentell. IPv4, en pfSense-peer, amd64 och aarch64.
 
 ## Isolerat nätverk
 
@@ -26,6 +26,10 @@ Containern delar fortfarande kärna, CPU och minne med värden. Det här begrän
 4. Starta manuellt och testa både lokal åtkomst och tunneln. Aktivera autostart först efter fungerande tester.
 
 Tunneladressen fungerar som tidigare för HA, exempelvis `http://10.77.0.2:8123`. Andra tjänster på HA-värden och hela fjärr-LAN exponeras inte. Om Core använder TLS måste du använda HTTPS med värdnamn som matchar dess certifikat. Proxyn skapar inga certifikat.
+
+## Före första starten
+
+Fliken **Konfiguration** kan redigeras medan tillägget är stoppat. Fyll i klientens privata nyckel, pfSense publika nyckel, endpoint och nätinställningar. Spara och starta sedan. Standardvärdenas tomma nycklar är platshållare; inga nycklar genereras automatiskt. Sidan med publik nyckel fungerar efter att giltig konfiguration sparats och tillägget startat. Version 0.2.1 talar om vilket fält som saknas och ändrar inget nätverk när konfigurationskontrollen stoppar starten.
 
 ## Installation och nycklar
 

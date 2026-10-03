@@ -2,7 +2,7 @@
 
 [Dokumentation på svenska](DOCS.sv.md)
 
-Version 0.2.0 is experimental. Supports IPv4, one pfSense peer, amd64 and aarch64.
+Version 0.2.1 is experimental. Supports IPv4, one pfSense peer, amd64 and aarch64.
 
 ## Network design
 
@@ -42,6 +42,10 @@ Version 0.1.x used host networking. Version 0.2.0 deliberately removes it and is
 4. Start manually and complete the acceptance tests below before re-enabling autostart.
 
 The tunnel URL remains `http://10.77.0.2:8123` with the example settings. Access to other host services or a remote LAN through the old host interface is not provided. If Core uses TLS, use HTTPS with a hostname matching its certificate; the relay does not issue certificates.
+
+## Before the first start
+
+You can edit the **Configuration** tab while the add-on is stopped. Fill in the client private key, pfSense public key, endpoint and network settings, then save and start. The blank default keys are placeholders; no keys are generated automatically. The public key page is available only after valid configuration has been saved and the add-on starts. Version 0.2.1 reports the missing field explicitly and does not modify networking when configuration validation fails.
 
 ## Keys and options
 

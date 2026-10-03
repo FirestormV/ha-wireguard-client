@@ -1,3 +1,10 @@
+# 0.2.1
+
+- Explain that required keys must be filled in on the Configuration tab before starting.
+- Report safe, field-specific validation and route-conflict errors without logging secrets.
+- Log startup stages to distinguish configuration errors from networking failures.
+- Accept surrounding whitespace when pasting WireGuard keys.
+
 # 0.2.0
 
 Breaking update: read the migration guide and stop version 0.1.x before upgrading.

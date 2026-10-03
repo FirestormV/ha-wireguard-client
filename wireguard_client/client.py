@@ -17,6 +17,16 @@ OWNER = "ha-wireguard-client-v1"
 STOP = threading.Event()
 
 
+class ConfigurationError(ValueError):
+    """A curated message safe to show without exposing raw configuration values."""
+
+
+def failure_message(exc):
+    if isinstance(exc, ConfigurationError):
+        return "Configuration error: " + str(exc)
+    return f"Startup/runtime failure ({type(exc).__name__}); see the last startup stage. Raw error details are hidden to protect secrets."
+
+
 def run(*args, input=None):
     result = subprocess.run(args, input=input, text=True, capture_output=True, timeout=15)
     if result.returncode:
@@ -25,43 +35,65 @@ def run(*args, input=None):
     return result.stdout.strip()
 
 
-def key(value):
+def key(value, field="WireGuard key"):
+    if isinstance(value, str) and not value.strip():
+        raise ConfigurationError(f"{field} is empty. Open the add-on Configuration tab, enter this key, save, then start. Configuration is available while the add-on is stopped.")
     try:
+        if not isinstance(value, str):
+            raise ValueError()
+        value = value.strip()
         raw = base64.b64decode(value, validate=True)
         if len(raw) != 32 or not any(raw):
             raise ValueError()
     except Exception:
-        raise ValueError("WireGuard keys must be nonzero 32-byte base64 keys") from None
+        raise ConfigurationError(f"{field}: enter a nonzero 32-byte base64 WireGuard key (44 characters). Key value hidden.") from None
     return value
 
 
 def validate(o):
+    if not isinstance(o, dict):
+        raise ConfigurationError("Configuration must be an object.")
     o = dict(o)
+    for field in ("private_key", "peer_public_key", "endpoint_host", "endpoint_port", "tunnel_address", "allowed_ips", "mtu"):
+        if field not in o:
+            raise ConfigurationError(f"Missing required option: {field}.")
     o.setdefault("homeassistant_host", "homeassistant")
     o.setdefault("homeassistant_port", 8123)
     o.setdefault("persistent_keepalive", 25)  # Backward-compatible v0.1.0 options.
     for name in ("private_key", "peer_public_key"):
-        o[name] = key(o[name])
+        o[name] = key(o[name], name)
     if o.get("preshared_key"):
-        o["preshared_key"] = key(o["preshared_key"])
+        o["preshared_key"] = key(o["preshared_key"], "preshared_key")
     for field in ("endpoint_host", "homeassistant_host"):
         host = o[field]
         if not isinstance(host, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", host):
-            raise ValueError(f"{field} must be an IPv4 address or DNS hostname")
+            raise ConfigurationError(f"{field}: enter an IPv4 address or DNS hostname without a scheme, port or path.")
     for field, low, high in (("endpoint_port", 1, 65535), ("homeassistant_port", 1, 65535), ("mtu", 1280, 1420), ("persistent_keepalive", 0, 65535)):
         if type(o[field]) is not int or not low <= o[field] <= high:
-            raise ValueError(f"Invalid {field}")
-    addr = ip.IPv4Interface(o["tunnel_address"])
+            raise ConfigurationError(f"{field}: enter an integer from {low} to {high}.")
+    try:
+        if not isinstance(o["tunnel_address"], str):
+            raise ValueError()
+        addr = ip.IPv4Interface(o["tunnel_address"])
+    except ValueError:
+        raise ConfigurationError("tunnel_address: enter an IPv4 address with /32, for example 10.77.0.2/32.") from None
     if addr.network.prefixlen != 32 or addr.ip.is_unspecified or addr.ip.is_multicast:
-        raise ValueError("tunnel_address must be a unicast IPv4 /32")
+        raise ConfigurationError("tunnel_address must be a unicast IPv4 /32; use /32 rather than the tunnel subnet mask.")
     if not isinstance(o["allowed_ips"], list) or not o["allowed_ips"]:
-        raise ValueError("allowed_ips must be a nonempty list")
-    nets = [ip.IPv4Network(n, strict=True) for n in o["allowed_ips"]]
+        raise ConfigurationError("allowed_ips must be a nonempty list of IPv4 networks.")
+    nets = []
+    for index, value in enumerate(o["allowed_ips"], 1):
+        try:
+            if not isinstance(value, str):
+                raise ValueError()
+            nets.append(ip.IPv4Network(value, strict=True))
+        except ValueError:
+            raise ConfigurationError(f"allowed_ips entry {index}: enter an IPv4 network with network bits only, e.g. 192.168.10.0/24, or a single address with /32. IPv6 is not supported.") from None
     for index, net in enumerate(nets):
         if net.prefixlen == 0 or addr.ip in net or net.overlaps(ip.IPv4Network('127.0.0.0/8')) or net.overlaps(ip.IPv4Network('224.0.0.0/3')):
-            raise ValueError("Allowed networks must exclude default, local tunnel, loopback and multicast/reserved ranges")
+            raise ConfigurationError(f"allowed_ips entry {index + 1} ({net}): contains the client tunnel address or a restricted range; do not include the client tunnel IP, default route, loopback or multicast/reserved networks.")
         if any(net.overlaps(other) for other in nets[:index]):
-            raise ValueError("allowed_ips entries overlap")
+            raise ConfigurationError(f"allowed_ips entry {index + 1} ({net}) overlaps an earlier entry. Remove overlapping or duplicate networks.")
     o["allowed_ips"] = [str(n) for n in nets]
     o["tunnel_address"] = str(addr)
     return o
@@ -70,7 +102,7 @@ def validate(o):
 def resolve(o):
     address = socket.getaddrinfo(o["endpoint_host"], o["endpoint_port"], socket.AF_INET, socket.SOCK_DGRAM)[0][4][0]
     if any(ip.IPv4Address(address) in ip.IPv4Network(n) for n in o["allowed_ips"]):
-        raise ValueError("Endpoint would be routed into its own tunnel")
+        raise ConfigurationError(f"endpoint_host resolves to {address}, inside allowed_ips. Use a reachable endpoint outside the tunnel routes.")
     return address
 
 
@@ -95,8 +127,10 @@ def check_routes(o):
         dst = route.get("dst", "default")
         if dst == "default":
             continue
-        if any(ip.IPv4Network(dst).overlaps(n) for n in wanted):
-            raise ValueError("Tunnel or allowed network overlaps an existing host route")
+        existing = ip.IPv4Network(dst)
+        for network in wanted:
+            if existing.overlaps(network):
+                raise ConfigurationError(f"Tunnel/allowed network {network} overlaps container route {existing}. Choose networks outside the internal add-on network.")
 
 
 def start(o, endpoint):
@@ -127,7 +161,7 @@ def resolve_backend(o):
     address = socket.getaddrinfo(o["homeassistant_host"], o["homeassistant_port"], socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
     target = ip.IPv4Address(address)
     if target == ip.IPv4Interface(o["tunnel_address"]).ip or any(target in ip.IPv4Network(n) for n in o["allowed_ips"]):
-        raise ValueError("Home Assistant backend would be routed into the tunnel")
+        raise ConfigurationError(f"homeassistant_host resolves to {target}, inside the tunnel address/allowed_ips. Use the internal homeassistant hostname or correct allowed_ips to include only networks behind pfSense.")
     return address
 
 
@@ -180,14 +214,22 @@ def main():
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: STOP.set())
     os.umask(0o077)
-    o = validate(json.loads(Path("/data/options.json").read_text()))
+    print("Startup stage: validating add-on configuration", flush=True)
+    try:
+        raw_options = json.loads(Path("/data/options.json").read_text())
+    except json.JSONDecodeError:
+        raise ConfigurationError("Cannot parse options.json. Save the add-on configuration again.") from None
+    o = validate(raw_options)
     # Derive through stdin: the private key never appears in process arguments.
-    public_key = key(run("wg", "pubkey", input=o["private_key"] + "\n"))
+    print("Startup stage: deriving client public key", flush=True)
+    public_key = key(run("wg", "pubkey", input=o["private_key"] + "\n"), "Derived public key")
     import public_key_ui
+    print("Startup stage: starting Ingress public key page", flush=True)
     ui = public_key_ui.start(public_key)
     started = False
     proxy = None
     try:
+        print("Startup stage: resolving endpoint and Home Assistant backend", flush=True)
         while not STOP.is_set():
             try:
                 endpoint = resolve(o)
@@ -199,9 +241,12 @@ def main():
         else:
             return
         # Only this container network namespace is affected. No IP forwarding.
+        print("Startup stage: applying container forwarding policy", flush=True)
         run("iptables", "-w", "5", "-P", "FORWARD", "DROP")
+        print("Startup stage: checking routes and creating WireGuard interface", flush=True)
         start(o, endpoint)
         started = True
+        print("Startup stage: starting Home Assistant TCP relay", flush=True)
         proxy = start_proxy(o, backend)
         print(f'Tunnel configured; waiting for handshake. PersistentKeepalive={o["persistent_keepalive"]}', flush=True)
         print("Client public key: " + public_key, flush=True)
@@ -224,5 +269,5 @@ if __name__ == "__main__":
         main()
     except Exception as exc:
         # Deliberately do not expose parser errors, options, keys or subprocess output.
-        print(f"Startup/runtime failure ({type(exc).__name__}); verify configuration, route overlap and NET_ADMIN/kernel WireGuard support", flush=True)
+        print(failure_message(exc), flush=True)
         raise SystemExit(1)

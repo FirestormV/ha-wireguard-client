@@ -125,6 +125,44 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(args[2], 'TCP4:172.30.32.1:8123,connect-timeout=10')
         self.assertTrue(popen.call_args.kwargs['start_new_session'])
 
+    def test_empty_keys_explain_configuration_before_start(self):
+        for field in ('private_key', 'peer_public_key'):
+            with self.subTest(field=field):
+                o = options(); o[field] = ''
+                with self.assertRaises(c.ConfigurationError) as caught:
+                    c.validate(o)
+                message = c.failure_message(caught.exception)
+                self.assertIn(field + ' is empty', message)
+                self.assertIn('Configuration tab', message)
+                self.assertNotIn('NET_ADMIN', message)
+
+    def test_validation_errors_never_echo_input_secrets(self):
+        secret = 'SECRET_DO_NOT_LOG'
+        for field in ('private_key','peer_public_key','preshared_key','endpoint_host','homeassistant_host','tunnel_address','allowed_ips','mtu'):
+            o = options(); o[field] = [secret] if field == 'allowed_ips' else secret + '!'
+            with self.subTest(field=field), self.assertRaises(c.ConfigurationError) as caught:
+                c.validate(o)
+            self.assertNotIn(secret, c.failure_message(caught.exception))
+        self.assertNotIn(secret, c.failure_message(ValueError(secret)))
+
+    def test_key_paste_whitespace_is_accepted(self):
+        o = options(); o['private_key'] = '  ' + o['private_key'] + '\n'
+        self.assertEqual(c.validate(o)['private_key'], options()['private_key'])
+
+    def test_route_error_names_networks(self):
+        with patch.object(c, 'run', return_value='[{"dst":"192.168.10.0/24"}]'), self.assertRaises(c.ConfigurationError) as caught:
+            c.check_routes(options())
+        self.assertIn('192.168.10.0/24', c.failure_message(caught.exception))
+        self.assertIn('container route', c.failure_message(caught.exception))
+
+    def test_empty_configuration_never_reaches_network_setup(self):
+        import sys
+        o = options(); o['private_key'] = ''; o['peer_public_key'] = ''
+        with patch.object(c.Path,'read_text',return_value=json.dumps(o)), patch.object(c.signal,'signal'), patch.object(c.os,'umask'), patch.object(c,'run') as run, patch.object(c,'start') as start, patch('builtins.print'), self.assertRaises(c.ConfigurationError):
+            c.main()
+        run.assert_not_called()
+        start.assert_not_called()
+
     def test_secret_not_in_error(self):
         import subprocess
         with patch.object(c.subprocess,'run',return_value=subprocess.CompletedProcess([],1,'','SECRET')), self.assertRaises(RuntimeError) as caught:
