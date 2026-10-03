@@ -1,5 +1,5 @@
 name: WireGuard Client
-version: "0.1.1"
+version: "0.1.2"
 slug: wireguard_client
 url: https://github.com/FirestormV/ha-wireguard-client
 description: Outbound WireGuard tunnel to pfSense with routed access to Home Assistant

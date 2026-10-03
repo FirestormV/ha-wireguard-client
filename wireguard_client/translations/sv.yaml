@@ -1,0 +1,28 @@
+configuration:
+  private_key:
+    name: "Klientens privata nyckel"
+    description: "Den privata WireGuard-nyckeln för denna HA-klient. Dela aldrig nyckeln."
+  peer_public_key:
+    name: "pfSense publika nyckel"
+    description: "Den publika nyckeln för pfSense-tunneln, inte klientens publika nyckel."
+  preshared_key:
+    name: "Delad nyckel (valfri)"
+    description: "En extra delad hemlig nyckel. Måste matcha pfSense. Lämna tom för att avaktivera."
+  endpoint_host:
+    name: "pfSense endpoint-adress"
+    description: "Publik IPv4-adress eller DNS-namn för pfSense. Ange porten i det separata fältet."
+  endpoint_port:
+    name: "pfSense UDP-port"
+    description: "Porten där pfSense lyssnar på WireGuard. Standard: 51820."
+  tunnel_address:
+    name: "Klientens tunneladress"
+    description: "HA:s IPv4-adress i tunneln med /32-prefix. Exempel: 10.77.0.2/32."
+  allowed_ips:
+    name: "Nät via pfSense"
+    description: "Ange pfSense tunnel-IP och hemnäten för returtrafik. Ange inte fjärr-LAN eller en default route."
+  persistent_keepalive:
+    name: "Persistent keepalive (sekunder)"
+    description: "Intervall från 0 till 65535 sekunder. Standard: 25 för CGNAT. Ange 0 för att stänga av."
+  mtu:
+    name: "Tunnelns MTU"
+    description: "Maximal paketstorlek i tunneln, 1280–1420 byte. Standard: 1380. Prova 1280 om stora överföringar fastnar."

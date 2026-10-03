@@ -1,3 +1,3 @@
 # WireGuard Client
 
-Utgående WireGuard-klient för HA OS och pfSense. Se [DOCS.md](DOCS.md) för installation, konfiguration, pfSense-regler och planerad LAN-routing.
+An outbound WireGuard client for Home Assistant OS and pfSense. See the [English setup guide](DOCS.md) or [Swedish setup guide](DOCS.sv.md) for installation, configuration, firewall rules and future LAN routing.

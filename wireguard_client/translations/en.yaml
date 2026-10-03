@@ -1,0 +1,28 @@
+configuration:
+  private_key:
+    name: "Client private key"
+    description: "The private WireGuard key of this HA client. Never share this key."
+  peer_public_key:
+    name: "pfSense public key"
+    description: "The public key of the pfSense tunnel, not the client public key."
+  preshared_key:
+    name: "Preshared key (optional)"
+    description: "An optional extra shared secret. Must match pfSense. Leave empty to disable."
+  endpoint_host:
+    name: "pfSense endpoint host"
+    description: "The public IPv4 address or DNS hostname of pfSense. Enter the port separately."
+  endpoint_port:
+    name: "pfSense UDP port"
+    description: "The WireGuard listening port on pfSense. Default: 51820."
+  tunnel_address:
+    name: "Client tunnel address"
+    description: "The IPv4 address of HA in the tunnel, with /32 prefix. Example: 10.77.0.2/32."
+  allowed_ips:
+    name: "Networks through pfSense"
+    description: "Include the pfSense tunnel IP and home subnets for return traffic. Do not include the remote LAN or a default route."
+  persistent_keepalive:
+    name: "Persistent keepalive (seconds)"
+    description: "Interval from 0 to 65535 seconds. Default: 25 for CGNAT. Set 0 to disable."
+  mtu:
+    name: "Tunnel MTU"
+    description: "Maximum tunnel packet size, 1280–1420 bytes. Default: 1380. Try 1280 if large transfers stall."
