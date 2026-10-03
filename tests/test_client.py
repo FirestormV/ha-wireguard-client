@@ -36,6 +36,20 @@ class ClientTests(unittest.TestCase):
                 o = options(); o['persistent_keepalive'] = value
                 c.validate(o)
 
+    def test_whole_tunnel_subnet_supported(self):
+        o = options()
+        o['tunnel_address'] = '192.168.101.20/32'
+        o['allowed_ips'] = ['192.168.101.0/24']
+        self.assertEqual(c.validate(o)['allowed_ips'], ['192.168.101.0/24'])
+        with patch.object(c,'run',return_value='[{"dst":"default"},{"dst":"172.30.32.0/23"}]'):
+            c.check_routes(o)
+
+    def test_whole_subnet_still_rejects_backend_and_endpoint_loops(self):
+        o = options(); o['tunnel_address']='192.168.101.20/32'; o['allowed_ips']=['192.168.101.0/24']
+        with patch.object(c.socket,'getaddrinfo',return_value=[(None,None,None,None,('192.168.101.1',51820))]):
+            with self.assertRaises(c.ConfigurationError): c.resolve(o)
+            with self.assertRaises(c.ConfigurationError): c.resolve_backend(o)
+
     def test_invalid_config(self):
         cases = [('private_key','bad'), ('peer_public_key','x\nPostUp=bad'), ('endpoint_host','x\nPostUp=bad'), ('endpoint_port',0), ('mtu',9000), ('tunnel_address','10.77.0.2/24'), ('allowed_ips',['0.0.0.0/0']), ('allowed_ips',['192.168.10.1/24']), ('allowed_ips',['10.77.0.2/32']), ('allowed_ips',['::/0']), ('allowed_ips',['10.0.0.0/8','10.1.0.0/16'])]
         for field, value in cases:

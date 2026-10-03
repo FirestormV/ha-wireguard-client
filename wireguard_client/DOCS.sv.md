@@ -2,7 +2,7 @@
 
 [Full documentation in English](DOCS.md)
 
-Version 0.2.3 är experimentell. IPv4, en pfSense-peer, amd64 och aarch64.
+Version 0.2.4 är experimentell. IPv4, en pfSense-peer, amd64 och aarch64.
 
 ## Isolerat nätverk
 
@@ -125,3 +125,11 @@ För pingfelet: tryck **Fånga 15 sekunder** och kör direkt ping från pfSense,
 Request utan reply pekar mot filtrering/returväg inne i tillägget. Inga paket betyder att inget matchande dekrypterat paket sågs under fångsten; kontrollera peer-val, källadress i Allowed IPs och trafikräknare. Både request och reply visar att tillägget svarade; kontrollera då mottagningen i pfSense.
 
 Ladda ner rapport samlar senaste status, fångst och TCP-test. Privata nycklar, PSK, Supervisor-token och råa options-filer ingår inte. Rapporten innehåller nätadresser/routes och publika nycklar: granska före delning. Uppdatering sker manuellt; status cachelagras i fem sekunder.
+
+## Flera VPN-klienter (0.2.4)
+
+Med klientadress `192.168.101.20/32` kan **Nät via pfSense** nu vara en enda post: `192.168.101.0/24`. Då tillåts källadresser från hela VPN-nätet och svaren går genom tunneln. Klientens egen .20 är fortfarande en lokal /32-adress. Lägg inte samtidigt in .1/32 eller .11/32: överlappande poster avvisas.
+
+I pfSense ska just HA-peerens Allowed IPs fortfarande vara enbart `192.168.101.20/32`. Övriga peers har egna adresser där. Brandväggsregler och anslutande klienters routes måste tillåta åtkomsten. Nätet får inte överlappa tilläggets interna nät, Core-målet eller endpoint.
+
+Till och med 0.2.3 blockerades detta /24 och tillägget stannade i installationsläge utan tunnel. Uppdatera till 0.2.4, spara och starta om.

@@ -2,7 +2,7 @@
 
 [Dokumentation på svenska](DOCS.sv.md)
 
-Version 0.2.3 is experimental. Supports IPv4, one pfSense peer, amd64 and aarch64.
+Version 0.2.4 is experimental. Supports IPv4, one pfSense peer, amd64 and aarch64.
 
 ## Network design
 
@@ -154,3 +154,9 @@ Test HA backend TCP checks only the configured, resolved Core IP and port. Succe
 Requests and no replies suggest a local filtering/return-route issue. No packets does not prove a broken tunnel: encrypted packets may have been discarded before the interface, or no matching traffic was sent during the window. Compare peer selection, source Allowed IPs, handshake and transfer counters. Both request and reply mean the add-on responded; inspect pfSense's receive path next.
 
 Download report includes the last collected snapshot, capture and backend test. It excludes private keys, PSKs, Supervisor tokens and options files, but contains network IPs/routes and public peer keys; review before sharing. Diagnostics refreshes on demand and caches snapshots for five seconds. No arbitrary command, target or capture filter can be supplied from the browser.
+
+## Access from multiple VPN peers (0.2.4)
+
+For client tunnel address `192.168.101.20/32`, `allowed_ips: ["192.168.101.0/24"]` permits source addresses from the entire VPN subnet through pfSense and installs its return route inside the container. The client address stays locally assigned as /32, with local delivery taking precedence. Do not also list .1/32 or .11/32 alongside that /24; overlapping entries are rejected. The pfSense peer for this add-on must still use only `192.168.101.20/32`; pfSense routes other peer addresses to their own peers. Firewall rules and each connecting peer's routes must allow access. The subnet must not overlap the container bridge, backend or public endpoint.
+
+Versions through 0.2.3 reject a network containing the client address and remain in setup mode. No handshake or ping is possible in that state; update to 0.2.4 and restart.

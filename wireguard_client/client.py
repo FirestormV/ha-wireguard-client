@@ -127,8 +127,8 @@ def validate(o):
         except ValueError:
             raise ConfigurationError(f"allowed_ips entry {index}: enter an IPv4 network with network bits only, e.g. 192.168.10.0/24, or a single address with /32. IPv6 is not supported.") from None
     for index, net in enumerate(nets):
-        if net.prefixlen == 0 or addr.ip in net or net.overlaps(ip.IPv4Network('127.0.0.0/8')) or net.overlaps(ip.IPv4Network('224.0.0.0/3')):
-            raise ConfigurationError(f"allowed_ips entry {index + 1} ({net}): contains the client tunnel address or a restricted range; do not include the client tunnel IP, default route, loopback or multicast/reserved networks.")
+        if net.prefixlen == 0 or (net.prefixlen == 32 and addr.ip in net) or net.overlaps(ip.IPv4Network('127.0.0.0/8')) or net.overlaps(ip.IPv4Network('224.0.0.0/3')):
+            raise ConfigurationError(f"allowed_ips entry {index + 1} ({net}): is the client address alone or a restricted range; do not use the client /32 alone, default route, loopback or multicast/reserved networks. A broader tunnel subnet is supported.")
         if any(net.overlaps(other) for other in nets[:index]):
             raise ConfigurationError(f"allowed_ips entry {index + 1} ({net}) overlaps an earlier entry. Remove overlapping or duplicate networks.")
     o["allowed_ips"] = [str(n) for n in nets]

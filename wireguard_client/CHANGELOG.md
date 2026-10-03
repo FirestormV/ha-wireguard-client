@@ -1,3 +1,10 @@
+# 0.2.4
+
+- Allow a whole tunnel subnet in allowed_ips even when it contains the client tunnel address.
+- Keep the client address as a local /32; Linux local delivery takes precedence over the tunnel subnet route.
+- Retain default-route, backend/endpoint loop, overlapping-entry and internal-network conflict checks.
+- Exercise ping from two tunnel source addresses, HTTP and local route precedence in the real tunnel test.
+
 # 0.2.3
 
 - Add an Ingress diagnostics panel and downloadable JSON report.
