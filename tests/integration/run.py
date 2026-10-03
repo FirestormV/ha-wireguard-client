@@ -26,6 +26,19 @@ def address(name):
     return json.loads(cmd('docker','inspect',name))[0]['NetworkSettings']['Networks'][NETWORK]['IPAddress']
 
 
+def host_routes():
+    routes=json.loads(cmd('ip','-j','-4','route','show','table','all'))
+    # DHCP lease countdowns are not route changes; ordering is not significant.
+    for route in routes:
+        route.pop('expires',None)
+    return sorted(json.dumps(route,sort_keys=True) for route in routes)
+
+
+def assert_host_routes(before):
+    after=host_routes()
+    assert after == before, f'Host routes changed: removed={set(before)-set(after)} added={set(after)-set(before)}'
+
+
 def wait_http():
     for _ in range(30):
         try:
@@ -54,10 +67,10 @@ try:
     with tempfile.TemporaryDirectory() as temp:
         options=dict(private_key=client_private,peer_public_key=peer_public,preshared_key='',endpoint_host=address('wg-ha-peer'),endpoint_port=51820,tunnel_address='192.168.101.20/32',allowed_ips=['192.168.101.0/24'],persistent_keepalive=25,mtu=1380,homeassistant_host='wg-ha-backend',homeassistant_port=8123)
         p=Path(temp)/'options.json'; p.write_text(json.dumps(options)); p.chmod(0o600)
-        before=cmd('ip','-j','-4','route','show','table','all')
+        before=host_routes()
         cmd('docker','run','-d','--name','wg-ha-client','--network',NETWORK,'--cap-add','NET_ADMIN','-v',f'{temp}:/data',IMAGE)
         wait_http()
-        assert cmd('ip','-j','-4','route','show','table','all') == before, 'Host routes changed'
+        assert_host_routes(before)
         assert 'wg-ha-client' not in cmd('ip','-j','link','show'), 'Tunnel leaked into host namespace'
         assert execute('wg-ha-client','iptables','-S','FORWARD') == '-P FORWARD DROP'
         bridge_ip=address('wg-ha-client')
@@ -95,10 +108,10 @@ s.close()
         assert local_route.startswith('local '), local_route
         # Stop/start must recover without leaving host routes or requiring a new key.
         cmd('docker','stop','wg-ha-client')
-        assert cmd('ip','-j','-4','route','show','table','all') == before
+        assert_host_routes(before)
         cmd('docker','start','wg-ha-client')
         wait_http()
-        assert cmd('ip','-j','-4','route','show','table','all') == before
+        assert_host_routes(before)
         print('PASS: real WireGuard handshake, HTTP, upgraded binary stream, scoped listener, ingress denial, restart, unchanged host routes')
 finally:
     for name in NAMES:
