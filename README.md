@@ -12,7 +12,7 @@ Alternativt: öppna tilläggsbutiken → menyn → Repositories och lägg till `
 
 ## Status
 
-Version 0.1.1 är experimentell. Tolv Python-enhetstester med simulerade systemkommandon passerar. Docker-motorn var inte igång i byggmiljön: containerbygge, NET_ADMIN/AppArmor-beteende på HA OS, riktiga routes och tunnel/HTTP genom CGNAT är därför **inte verifierade**. Guiden innehåller acceptanstest att köra på målmiljön.
+Version 0.1.1 är experimentell. Tolv Python-enhetstester med simulerade systemkommandon passerar. GitHub Actions har byggt amd64-imagen och verifierat Python, WireGuard och iproute2 i containern ([byggresultat](https://github.com/FirestormV/ha-wireguard-client/actions/runs/37113559854)). Bygge för aarch64, NET_ADMIN/AppArmor-beteende på HA OS, riktiga routes och tunnel/HTTP genom CGNAT är ännu **inte verifierade**. Guiden innehåller acceptanstest att köra på målmiljön.
 
 ```sh
 python3 -m unittest discover -s tests -v
