@@ -2,7 +2,7 @@
 
 [Full documentation in English](DOCS.md)
 
-Version 0.2.2 är experimentell. IPv4, en pfSense-peer, amd64 och aarch64.
+Version 0.2.3 är experimentell. IPv4, en pfSense-peer, amd64 och aarch64.
 
 ## Isolerat nätverk
 
@@ -113,3 +113,15 @@ Denna version är avsiktligt en TCP-väg till HA. Den vidarebefordrar inte IP-pa
 En framtida LAN-gateway bör vara separat, helst på fjärrroutern eller en dedikerad gateway, med egen peer-identitet. Då behövs fjärrsubnät i pfSense-peerens Allowed IPs, matchande routes, smala forwardingregler och returroute på fjärrroutern eller begränsad SNAT. HA-tillägget kan då behålla isoleringen. Broadcast/mDNS kräver separat hantering.
 
 Källor och fullständiga tekniska detaljer finns i [den engelska guiden](DOCS.md).
+
+## Diagnostik (0.2.3)
+
+Öppna webbgränssnitt → Diagnostik. Uppdatera visar aktiva WireGuard-inställningar, trafikräknare, handshake, tunneladresser, routes, lyssnande TCP-portar, brandväggsräknare och inställningar för ICMP/rp_filter. Informationen gäller enbart tilläggets nätverk. Returvägsexemplen använder första värdadressen i varje angivet nät.
+
+Testa TCP till HA provar det redan konfigurerade Core-målet. Det testar anslutningen, inte inloggning, HTTP eller TLS.
+
+För pingfelet: tryck **Fånga 15 sekunder** och kör direkt ping från pfSense, källa 192.168.101.1 till 192.168.101.20. Fångsten visar högst 60 paket på tunnelgränssnittet: ICMP echo och TCP-anslutningars start/stopp på port 8123, utan nyttolast. NET_RAW behövs i containern.
+
+Request utan reply pekar mot filtrering/returväg inne i tillägget. Inga paket betyder att inget matchande dekrypterat paket sågs under fångsten; kontrollera peer-val, källadress i Allowed IPs och trafikräknare. Både request och reply visar att tillägget svarade; kontrollera då mottagningen i pfSense.
+
+Ladda ner rapport samlar senaste status, fångst och TCP-test. Privata nycklar, PSK, Supervisor-token och råa options-filer ingår inte. Rapporten innehåller nätadresser/routes och publika nycklar: granska före delning. Uppdatering sker manuellt; status cachelagras i fem sekunder.

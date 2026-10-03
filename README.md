@@ -37,6 +37,6 @@ docker build --build-arg BUILD_ARCH=amd64 -t ha-wireguard-client:test wireguard_
 python3 tests/integration/run.py
 ```
 
-Version 0.2.2 remains experimental. HA OS/Supervisor/AppArmor integration, your pfSense/CGNAT connection, aarch64 and actual HA login/WebSocket/TLS behavior require target-system acceptance tests. CI's upgraded binary stream verifies transparent transport, not a complete HA session.
+Version 0.2.3 remains experimental. HA OS/Supervisor/AppArmor integration, your pfSense/CGNAT connection, aarch64 and actual HA login/WebSocket/TLS behavior require target-system acceptance tests. CI's upgraded binary stream verifies transparent transport, not a complete HA session.
 
 Routing to an entire remote LAN is not implemented. A future gateway should be separate from this HA-only relay and explicitly enabled.

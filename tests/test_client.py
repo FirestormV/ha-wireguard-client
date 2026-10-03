@@ -1,4 +1,5 @@
 import base64
+import sys
 import importlib.util
 import json
 from pathlib import Path
@@ -6,6 +7,7 @@ import unittest
 from unittest.mock import patch, Mock
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'wireguard_client'))
 spec = importlib.util.spec_from_file_location('client', ROOT / 'wireguard_client/client.py')
 c = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(c)
@@ -97,7 +99,7 @@ class ClientTests(unittest.TestCase):
         with patch.object(c.Path, 'read_text', return_value=json.dumps(o)), patch.object(c.signal, 'signal'), patch.object(c.os, 'umask'), patch.object(c, 'prepare_identity', return_value=(o,public)), patch.object(c, 'run', return_value=public) as run, patch.dict(sys.modules, {'public_key_ui':ui}), patch.object(c, 'resolve', return_value='203.0.113.1'), patch.object(c, 'resolve_backend', return_value='172.30.32.1'), patch.object(c, 'start'), patch.object(c, 'start_proxy'), patch.object(c, 'stop_proxy'), patch.object(c, 'monitor'), patch.object(c, 'remove_owned') as cleanup, patch('builtins.print'):
             c.main()
         run.assert_any_call('iptables', '-w', '5', '-P', 'FORWARD', 'DROP')
-        ui.start.assert_called_once_with(public, None)
+        self.assertEqual(ui.start.call_args.args[:2], (public, None))
         ui.start.return_value.shutdown.assert_called_once()
         ui.start.return_value.server_close.assert_called_once()
         cleanup.assert_called_once()

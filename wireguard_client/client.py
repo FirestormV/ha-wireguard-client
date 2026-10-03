@@ -265,7 +265,9 @@ def main():
         setup_error = str(exc)
     import public_key_ui
     print("Startup stage: starting Ingress public key page", flush=True)
-    ui = public_key_ui.start(public_key, setup_error)
+    from diagnostics import Diagnostics
+    diagnostics = Diagnostics(o if setup_error is None else {}, setup_error)
+    ui = public_key_ui.start(public_key, setup_error, diagnostics)
     started = False
     proxy = None
     try:
@@ -279,6 +281,7 @@ def main():
             try:
                 endpoint = resolve(o)
                 backend = resolve_backend(o)
+                diagnostics.backend = backend
                 break
             except socket.gaierror:
                 print("Waiting for endpoint/backend DNS; retrying in 30 seconds", flush=True)
@@ -293,6 +296,7 @@ def main():
         started = True
         print("Startup stage: starting Home Assistant TCP relay", flush=True)
         proxy = start_proxy(o, backend)
+        diagnostics.stage = "running"
         print(f'Tunnel configured; waiting for handshake. PersistentKeepalive={o["persistent_keepalive"]}', flush=True)
         print("Client public key: " + public_key, flush=True)
         monitor(o, proxy)

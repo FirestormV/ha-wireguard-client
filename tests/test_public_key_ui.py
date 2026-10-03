@@ -48,6 +48,17 @@ class UITests(unittest.TestCase):
         self.assertIn(b'peer_public_key is empty &lt;unsafe&gt;',body)
         self.assertIn(b'Leave Client private key empty',body)
 
+    def test_diagnostics_post_rejects_direct_and_missing_action_header(self):
+        from unittest.mock import Mock
+        diag=Mock()
+        for address,headers in [('192.168.101.1',{'X-Diagnostics-Action':'1'}),(ui.INGRESS_SOURCE,{})]:
+            handler=object.__new__(ui.handler_for(PUBLIC,diagnostics=diag))
+            handler.client_address=(address,1234); handler.headers=headers; handler.path='/capture'
+            with patch.object(handler,'send_error') as error:
+                handler.do_POST()
+            error.assert_called_once_with(403)
+        diag.capture.assert_not_called()
+
     def test_render_escapes_input(self):
         body = ui.render('\"><script>alert(1)</script>')
         self.assertNotIn(b'\"><script>alert(1)</script>', body)

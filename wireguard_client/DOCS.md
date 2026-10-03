@@ -2,7 +2,7 @@
 
 [Dokumentation på svenska](DOCS.sv.md)
 
-Version 0.2.2 is experimental. Supports IPv4, one pfSense peer, amd64 and aarch64.
+Version 0.2.3 is experimental. Supports IPv4, one pfSense peer, amd64 and aarch64.
 
 ## Network design
 
@@ -144,3 +144,13 @@ A future LAN gateway should be a separate, explicitly enabled component, ideally
 - [HA app configuration](https://developers.home-assistant.io/docs/apps/configuration/)
 - [WireGuard Quick Start](https://www.wireguard.com/quickstart/)
 - [Netgate remote access](https://docs.netgate.com/pfsense/en/latest/recipes/wireguard-ra.html)
+
+## Diagnostics (0.2.3)
+
+Open Web UI → Diagnostics. Refresh collects state inside this add-on only: active WireGuard Allowed IPs and endpoint, transfer counters, handshake timestamps/age, interface addresses and counters, all container IPv4 routes and rules, TCP listeners, firewall counters, ICMP echo and reverse-path-filter settings. Return-route examples use the first host of each configured network; they are not proof of every client route.
+
+Test HA backend TCP checks only the configured, resolved Core IP and port. Success proves a TCP connection, not login, HTTP or TLS. Capture runs for at most 15 seconds/60 packets on wg-ha-client. Start it, then ping the tunnel IP from pfSense with its tunnel IP as source. Only ICMP echo and TCP port 8123 connection-control summaries are returned, without packet payloads or pcap files. NET_RAW is required in the container.
+
+Requests and no replies suggest a local filtering/return-route issue. No packets does not prove a broken tunnel: encrypted packets may have been discarded before the interface, or no matching traffic was sent during the window. Compare peer selection, source Allowed IPs, handshake and transfer counters. Both request and reply mean the add-on responded; inspect pfSense's receive path next.
+
+Download report includes the last collected snapshot, capture and backend test. It excludes private keys, PSKs, Supervisor tokens and options files, but contains network IPs/routes and public peer keys; review before sharing. Diagnostics refreshes on demand and caches snapshots for five seconds. No arbitrary command, target or capture filter can be supplied from the browser.

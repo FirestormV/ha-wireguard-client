@@ -73,6 +73,22 @@ while f.readline() != b'\r\n': pass
 payload=bytes(range(256)); s.sendall(payload); assert f.read(256)==payload
 s.close()
 """)
+        # Exercise the exported diagnostics against this real tunnel.
+        snapshot=json.loads(execute('wg-ha-client','python3','-c',"import sys,json; sys.path.insert(0,'/opt'); from diagnostics import Diagnostics; d=Diagnostics(json.load(open('/data/options.json'))); print(json.dumps(d.snapshot()))"))
+        assert client_private not in json.dumps(snapshot)
+        assert peer_private not in json.dumps(snapshot)
+        assert snapshot['wireguard']['latest-handshakes']
+        capture=subprocess.Popen(['docker','exec','wg-ha-client','python3','-c',"import sys,json; sys.path.insert(0,'/opt'); from diagnostics import Diagnostics; d=Diagnostics({}); d.stage='running'; print(json.dumps(d.capture()))"],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        try:
+            time.sleep(1)
+            execute('wg-ha-peer','ping','-c','2','-W','2','10.77.0.2')
+            output,error=capture.communicate(timeout=20)
+            assert capture.returncode==0, error
+            summary=json.loads(output)['summary']
+            assert 'echo request' in summary and 'echo reply' in summary, summary
+        finally:
+            if capture.poll() is None:
+                capture.kill(); capture.wait()
         # Stop/start must recover without leaving host routes or requiring a new key.
         cmd('docker','stop','wg-ha-client')
         assert cmd('ip','-j','-4','route','show','table','all') == before

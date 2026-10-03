@@ -1,3 +1,12 @@
+# 0.2.3
+
+- Add an Ingress diagnostics panel and downloadable JSON report.
+- Show live WireGuard counters/handshakes/Allowed IPs, interface counters, addresses, routes, listeners, firewall counters and ICMP/rp_filter settings.
+- Add a bounded TCP check to the configured HA backend.
+- Add a manual 15-second/60-packet tunnel capture of ICMP echo and TCP connection-control headers, without payloads.
+- Request NET_RAW for packet capture; keep capture inside the isolated container.
+- Exclude private keys, PSKs, Supervisor tokens and raw options from diagnostics.
+
 # 0.2.2
 
 - Generate and persist a client identity automatically when private_key is empty.
