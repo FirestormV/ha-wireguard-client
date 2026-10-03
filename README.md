@@ -1,5 +1,7 @@
 # Home Assistant OS WireGuard Client
 
+![WireGuard Client icon](wireguard_client/icon.png)
+
 An outbound IPv4 WireGuard tunnel from Home Assistant OS behind CGNAT to pfSense. Configure keys, endpoint, routes, MTU and PersistentKeepalive (default: 25 seconds) in the Home Assistant add-on configuration UI.
 
 Host networking makes Home Assistant accessible at its tunnel address. Explicit return routes preserve access from your home network without changing the default internet route.
@@ -20,11 +22,11 @@ Source code, logs and primary documentation are in English. Configuration labels
 
 ## Status
 
-Version 0.1.3 is experimental. Nineteen unit tests with mocked system commands pass. GitHub Actions has built the amd64 image and checked Python, WireGuard and iproute2 in the container ([initial build](https://github.com/FirestormV/ha-wireguard-client/actions/runs/37113559854)). The aarch64 build, HA Ingress integration, HA OS permissions, real routes and end-to-end tunnel/HTTP access through CGNAT still require validation on the target system.
+Version 0.1.4 is experimental. Nineteen unit tests with mocked system commands pass. GitHub Actions has built the amd64 image and checked Python, WireGuard and iproute2 in the container ([initial build](https://github.com/FirestormV/ha-wireguard-client/actions/runs/37113559854)). The aarch64 build, HA Ingress integration, HA OS permissions, real routes and end-to-end tunnel/HTTP access through CGNAT still require validation on the target system.
 
 ```sh
 python3 -m unittest discover -s tests -v
-docker build --build-arg BUILD_ARCH=amd64 -t ha-wireguard-client:0.1.3 wireguard_client
+docker build --build-arg BUILD_ARCH=amd64 -t ha-wireguard-client:0.1.4 wireguard_client
 ```
 
 The setup guide includes acceptance checks. Remote LAN forwarding is a planned extension, not implemented in this version.

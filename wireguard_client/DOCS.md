@@ -2,7 +2,7 @@
 
 [Dokumentation på svenska](DOCS.sv.md)
 
-Version 0.1.3 is experimental. Supports amd64 and aarch64, IPv4 and one pfSense peer.
+Version 0.1.4 is experimental. Supports amd64 and aarch64, IPv4 and one pfSense peer.
 
 ## Address plan
 
@@ -111,7 +111,7 @@ When no recent handshake exists for over 180 seconds, the endpoint is refreshed 
 
 ## Future remote LAN routing
 
-Version 0.1.3 does not manage IP forwarding, FORWARD rules or NAT. The routed design preserves client source addresses and supports a future site-to-site extension.
+Version 0.1.4 does not manage IP forwarding, FORWARD rules or NAT. The routed design preserves client source addresses and supports a future site-to-site extension.
 
 For remote LAN `192.168.50.0/24` and HA OS with reserved LAN address `192.168.50.10`:
 

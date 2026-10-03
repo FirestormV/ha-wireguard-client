@@ -1,3 +1,7 @@
+# 0.1.4
+
+- Add a custom app icon for the Home Assistant store and repository README.
+
 # 0.1.3
 
 - Add a read-only client public key field and copy button under Open Web UI.
