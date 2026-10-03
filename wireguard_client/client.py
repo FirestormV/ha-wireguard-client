@@ -141,25 +141,33 @@ def main():
         signal.signal(sig, lambda *_: STOP.set())
     os.umask(0o077)
     o = validate(json.loads(Path("/data/options.json").read_text()))
-    while not STOP.is_set():
-        try:
-            endpoint = resolve(o)
-            break
-        except socket.gaierror:
-            print("Waiting for endpoint DNS; retrying in 30 seconds", flush=True)
-            STOP.wait(30)
-    else:
-        return
+    # Derive through stdin: the private key never appears in process arguments.
+    public_key = key(run("wg", "pubkey", input=o["private_key"] + "\n"))
+    import public_key_ui
+    ui = public_key_ui.start(public_key)
     started = False
     try:
+        while not STOP.is_set():
+            try:
+                endpoint = resolve(o)
+                break
+            except socket.gaierror:
+                print("Waiting for endpoint DNS; retrying in 30 seconds", flush=True)
+                STOP.wait(30)
+        else:
+            return
         start(o, endpoint)
         started = True
         print(f'Tunnel configured; waiting for handshake. PersistentKeepalive={o["persistent_keepalive"]}', flush=True)
-        print("Client public key: " + run("wg", "show", IFACE, "public-key"), flush=True)
+        print("Client public key: " + public_key, flush=True)
         monitor(o)
     finally:
-        if started:
-            remove_owned()
+        try:
+            if started:
+                remove_owned()
+        finally:
+            ui.shutdown()
+            ui.server_close()
 
 
 if __name__ == "__main__":

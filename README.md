@@ -10,17 +10,21 @@ Alternatively, open the app/add-on store → menu → Repositories and add `http
 
 Read the [setup and pfSense guide](wireguard_client/DOCS.md) or [Swedish guide](wireguard_client/DOCS.sv.md). Addresses are examples; supply your own keys locally in Home Assistant.
 
+## Client public key
+
+Start the add-on and select **Open Web UI** to view and copy the client public key from a read-only field. It is derived from your configured private key at startup. The page is accessible through HA Ingress while the add-on runs, even before a handshake. No private key is displayed.
+
 ## Languages
 
 Source code, logs and primary documentation are in English. Configuration labels and descriptions include English and Swedish translations for Home Assistant. YAML option names stay the same in every language. Markdown documentation has explicit language links; it is not automatically translated.
 
 ## Status
 
-Version 0.1.2 is experimental. Twelve unit tests with mocked system commands pass. GitHub Actions has built the amd64 image and checked Python, WireGuard and iproute2 in the container ([initial build](https://github.com/FirestormV/ha-wireguard-client/actions/runs/37113559854)). The aarch64 build, HA OS permissions, real routes and end-to-end tunnel/HTTP access through CGNAT still require validation on the target system.
+Version 0.1.3 is experimental. Nineteen unit tests with mocked system commands pass. GitHub Actions has built the amd64 image and checked Python, WireGuard and iproute2 in the container ([initial build](https://github.com/FirestormV/ha-wireguard-client/actions/runs/37113559854)). The aarch64 build, HA Ingress integration, HA OS permissions, real routes and end-to-end tunnel/HTTP access through CGNAT still require validation on the target system.
 
 ```sh
 python3 -m unittest discover -s tests -v
-docker build --build-arg BUILD_ARCH=amd64 -t ha-wireguard-client:0.1.2 wireguard_client
+docker build --build-arg BUILD_ARCH=amd64 -t ha-wireguard-client:0.1.3 wireguard_client
 ```
 
 The setup guide includes acceptance checks. Remote LAN forwarding is a planned extension, not implemented in this version.

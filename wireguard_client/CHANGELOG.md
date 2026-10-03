@@ -1,3 +1,10 @@
+# 0.1.3
+
+- Add a read-only client public key field and copy button under Open Web UI.
+- Derive the public key from the configured private key before endpoint resolution.
+- Restrict the page to HA Ingress and use a Supervisor-assigned port.
+- Provide English and Swedish page text; keep private keys out of the web server.
+
 # 0.1.2
 
 - Use English for primary documentation and preserve a linked Swedish guide.

@@ -4,7 +4,7 @@
 
 Fältnamn och hjälptexter finns på svenska och engelska i HA. YAML-nycklarna är alltid engelska.
 
-Version 0.1.2, experimentell. Stöd: amd64 och aarch64, IPv4, en pfSense-peer.
+Version 0.1.3, experimentell. Stöd: amd64 och aarch64, IPv4, en pfSense-peer.
 
 ## Adressplan och trafik
 
@@ -79,9 +79,19 @@ Alla fält i HA Configuration:
 
 `allowed_ips` anger nät **på hemsidan** som ska nås genom pfSense och godtas som källadresser från dess peer. Hemnätet måste finnas här för svarstrafik från HA. Ange alla relevanta hem-VLAN uttryckligen. Fjärr-LAN ska inte läggas i denna lista.
 
-`persistent_keepalive` kan ändras i UI: 0–65535 sekunder, standard 25. Värdet 0 stänger av periodisk keepalive; behåll normalt 25 bakom CGNAT så att NAT-mappningen hålls öppen. Äldre konfiguration utan fältet använder 25. `tunnel_address` måste vara /32. Default route, överlappande poster och kollision med värdens befintliga nät avvisas. Använd separata, icke överlappande subnät för hem, fjärr-LAN, tunnel och HA:s interna Docker-nät. IPv6 och full tunnel stöds inte i v0.1.2.
+`persistent_keepalive` kan ändras i UI: 0–65535 sekunder, standard 25. Värdet 0 stänger av periodisk keepalive; behåll normalt 25 bakom CGNAT så att NAT-mappningen hålls öppen. Äldre konfiguration utan fältet använder 25. `tunnel_address` måste vara /32. Default route, överlappande poster och kollision med värdens befintliga nät avvisas. Använd separata, icke överlappande subnät för hem, fjärr-LAN, tunnel och HA:s interna Docker-nät. IPv6 och full tunnel stöds inte i v0.1.3.
 
 Hemligheter ligger i Supervisors options-lagring och kan finnas i säkerhetskopior. UI-fält av typen password ger maskering, inte separat kryptering. Den tillfälliga WireGuard-konfigurationen skapas med rättigheter 0600 i `/tmp` och tas bort efter inläsning. Loggen innehåller klientens publika nyckel men inga privata nycklar.
+
+## Visa klientens publika nyckel
+
+Spara giltig konfiguration och starta tillägget. Välj **Öppna webbgränssnitt** för ett skrivskyddat fält med klientens publika nyckel och en kopieringsknapp. Klistra in den i klientens peer i pfSense. Sidan fungerar medan tillägget körs, även när DNS eller handshake väntar. Den fungerar inte när tillägget är stoppat eller inte kan starta.
+
+Nyckeln beräknas från den privata nyckeln vid start. Starta om efter nyckeländring; sidan visar den inlästa nyckeln. Den skapar ingen privat nyckel. Den privata nyckeln skickas aldrig till webbservern.
+
+Sidan använder HA Ingress och tillåter endast Supervisors anslutningar från 172.30.32.2. Supervisor-API används för att hämta en tilldelad port. Direkt åtkomst från LAN nekas. Språk kan väljas på sidan; initialt används webbläsarens språk. Om automatisk kopiering saknas markeras nyckeln för manuell kopiering.
+
+Ingress behöver fortfarande verifieras på riktig HA OS: öppna sidan, kopiera nyckeln och jämför med loggen. Efter nyckeländring och omstart ska motsvarande nya publika nyckel visas.
 
 ## pfSense
 
@@ -110,7 +120,7 @@ Vid utebliven handshake i över 180 sekunder uppdateras endpoint via DNS var 30:
 
 ## Nästa steg: hela fjärr-LAN
 
-Arkitekturen behåller klienternas källadresser och kan utökas till routad site-to-site. V0.1.2 implementerar inte hantering av forwarding, FORWARD-regler eller NAT.
+Arkitekturen behåller klienternas källadresser och kan utökas till routad site-to-site. V0.1.3 implementerar inte hantering av forwarding, FORWARD-regler eller NAT.
 
 För exempel-LAN `192.168.50.0/24`, med HA OS på en reserverad LAN-adress `192.168.50.10`, behöver nästa version/design:
 

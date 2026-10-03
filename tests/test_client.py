@@ -3,7 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('client', ROOT / 'wireguard_client/client.py')
@@ -88,6 +88,19 @@ class ClientTests(unittest.TestCase):
         with patch.object(c,'remove_owned'), patch.object(c,'check_routes'), patch.object(c,'run',side_effect=run), self.assertRaises(RuntimeError):
             c.start(options(),'203.0.113.1')
         self.assertEqual(commands[-1],('ip','link','delete','dev',c.IFACE))
+
+    def test_public_key_ui_lifecycle(self):
+        import sys
+        ui = Mock()
+        o = options()
+        public = o['peer_public_key']
+        with patch.object(c.Path, 'read_text', return_value=json.dumps(o)), patch.object(c.signal, 'signal'), patch.object(c.os, 'umask'), patch.object(c, 'run', return_value=public) as run, patch.dict(sys.modules, {'public_key_ui':ui}), patch.object(c, 'resolve', return_value='203.0.113.1'), patch.object(c, 'start'), patch.object(c, 'monitor'), patch.object(c, 'remove_owned') as cleanup, patch('builtins.print'):
+            c.main()
+        run.assert_called_once_with('wg', 'pubkey', input=o['private_key'] + '\n')
+        ui.start.assert_called_once_with(public)
+        ui.start.return_value.shutdown.assert_called_once()
+        ui.start.return_value.server_close.assert_called_once()
+        cleanup.assert_called_once()
 
     def test_secret_not_in_error(self):
         import subprocess

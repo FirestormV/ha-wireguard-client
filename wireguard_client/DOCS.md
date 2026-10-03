@@ -2,7 +2,7 @@
 
 [Dokumentation på svenska](DOCS.sv.md)
 
-Version 0.1.2 is experimental. Supports amd64 and aarch64, IPv4 and one pfSense peer.
+Version 0.1.3 is experimental. Supports amd64 and aarch64, IPv4 and one pfSense peer.
 
 ## Address plan
 
@@ -74,6 +74,16 @@ Keepalive defaults to 25 seconds, including when upgrading older options without
 
 Secrets are stored in Supervisor options and may appear in backups. Password fields mask values in the UI; they are not separate encryption. The temporary WireGuard configuration uses mode 0600 in `/tmp` and is deleted after loading. Logs show the client public key, never private keys.
 
+## View the client public key
+
+After saving valid configuration and starting the add-on, select **Open Web UI**. The page displays the client public key in a read-only field with a copy button. Paste it into the client peer's Public Key field in pfSense. The page is available while the add-on is running, including during endpoint DNS retries or while waiting for a handshake. It is unavailable when the add-on is stopped or fails to start.
+
+The public key is derived from the configured private key at startup. Restart after changing keys; the page shows the key loaded at startup, not unsaved edits. It does not generate a private key or change your configuration. The private key is passed to `wg pubkey` via stdin and is never passed to the web server.
+
+Home Assistant's standard add-on schema does not expose a computed read-only option, so this page uses HA Ingress. Only connections from the Supervisor Ingress source (172.30.32.2) are accepted; direct LAN access is denied. The add-on uses the Supervisor API to obtain its assigned Ingress port. Do not port-forward it. Choose English or Swedish on the page; the initial choice follows the browser language. If clipboard access is unavailable, the button selects the key for manual copying.
+
+HA Ingress integration still needs verification on a real HA OS installation. After updating, check Open Web UI, copy the key, compare it with the public key in the log, and verify that a configuration restart displays the corresponding new public key.
+
 ## pfSense setup
 
 1. Install/enable WireGuard. Create a tunnel listening on UDP `51820`, with address `10.77.0.1/24` and its own key pair.
@@ -101,7 +111,7 @@ When no recent handshake exists for over 180 seconds, the endpoint is refreshed 
 
 ## Future remote LAN routing
 
-Version 0.1.2 does not manage IP forwarding, FORWARD rules or NAT. The routed design preserves client source addresses and supports a future site-to-site extension.
+Version 0.1.3 does not manage IP forwarding, FORWARD rules or NAT. The routed design preserves client source addresses and supports a future site-to-site extension.
 
 For remote LAN `192.168.50.0/24` and HA OS with reserved LAN address `192.168.50.10`:
 
