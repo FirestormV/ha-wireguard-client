@@ -6,6 +6,7 @@ import socket
 import subprocess
 import threading
 import time
+from status import Status, text_report
 
 IFACE = 'wg-ha-client'
 
@@ -21,7 +22,7 @@ def command(*args, timeout=3):
 class Diagnostics:
     def __init__(self, options, setup_error=None):
         # Explicit allowlist: never retain keys, PSK, raw options or Supervisor tokens.
-        self.config = {k: options[k] for k in ('tunnel_address','allowed_ips','persistent_keepalive','mtu','homeassistant_host','homeassistant_port') if k in options}
+        self.config = {k: options[k] for k in ('tunnel_address','allowed_ips','persistent_keepalive','mtu','homeassistant_host','homeassistant_port','site_to_site','local_networks') if k in options}
         self.setup_error = setup_error
         self.backend = None
         self.stage = 'setup' if setup_error else 'starting'
@@ -29,6 +30,16 @@ class Diagnostics:
         self.capture_lock = threading.Lock()
         self.cached = None
         self.cached_at = 0
+        self.proxy = None
+        self.gateway = None
+        self.last_probe = None
+        self.status_reader = Status(self)
+
+    def status(self):
+        return self.status_reader.collect(command)
+
+    def report(self):
+        return {'text': text_report(self.status())}
 
     def snapshot(self):
         if not self.lock.acquire(blocking=False):
@@ -48,6 +59,12 @@ class Diagnostics:
             result['routing_rules']=command('ip','-4','rule','show')
             result['tcp_listeners']=command('ss','-lnt')
             result['firewall']={chain:command('iptables','-w','1','-n','-v','-L',chain) for chain in ('INPUT','OUTPUT','FORWARD')}
+            result['gateway_rules'] = {table: command('iptables', '-w', '1', '-t', table, '-S') for table in ('filter','mangle','nat')}
+            result['nat_counters'] = command('iptables','-w','1','-t','nat','-n','-v','-L')
+            try:
+                result['dns'] = [line.strip() for line in Path('/etc/resolv.conf').read_text().splitlines() if line.startswith(('nameserver ', 'search '))]
+            except OSError:
+                result['dns'] = ['Unavailable']
             result['kernel_settings']={}
             for setting in ('icmp_echo_ignore_all','ip_forward','conf/all/rp_filter','conf/default/rp_filter',f'conf/{IFACE}/rp_filter','conf/eth0/rp_filter'):
                 try:
@@ -68,6 +85,11 @@ class Diagnostics:
             self.lock.release()
 
     def probe_backend(self):
+        result = self._probe_backend()
+        self.last_probe = {**result, 'tested_at': int(time.time())}
+        return self.last_probe
+
+    def _probe_backend(self):
         if not self.backend:
             return {'ok':False,'message':'Backend not resolved yet; check setup/DNS stage.'}
         started=time.monotonic()

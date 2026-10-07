@@ -2,165 +2,186 @@
 
 [Dokumentation på svenska](DOCS.sv.md)
 
-Version 0.2.5 is experimental. Supports IPv4, one pfSense peer, amd64 and aarch64.
+Version 0.3.0 is experimental. IPv4 only; one pfSense peer; amd64 and aarch64.
 
-## Network design
+## Install and create the client identity
 
-Home computer → pfSense → WireGuard → add-on tunnel address:8123 → TCP relay → Home Assistant Core.
+1. Add `https://github.com/FirestormV/ha-wireguard-client` under the Home Assistant
+   add-on store repository menu, then install **WireGuard Client**.
+2. Leave the client private key empty and start the add-on. Open Web UI to copy
+   its public key. A working tunnel is not required; incomplete configuration
+   leaves the dashboard available without starting a tunnel.
+3. Put that public key in the client peer on pfSense. Fill in the pfSense public
+   key, endpoint and networks in the add-on Configuration. Save and restart.
+4. Complete the acceptance tests below before enabling automatic startup.
 
-WireGuard, tunnel addresses and routes exist only inside the add-on's network namespace. No host networking or published host ports are used. NET_ADMIN allows changes within that namespace; the add-on does not mount or enter the host namespace. The container's FORWARD policy is DROP. AppArmor is enabled. There is no Supervisor API dependency.
+The private key is generated once, saved atomically with mode 0600 in
+`/data/client-private.key`, and retained across restarts and updates. It is never
+shown. Add-on data backups include this identity; keep backups private. To import
+an identity, supply `private_key`. Clearing that field later reuses the imported
+identity. Invalid saved keys cause an error rather than silently rotating keys.
 
-The relay binds only the tunnel address at port 8123 and permits up to 32 concurrent connections. It forwards raw TCP to one configured backend. HTTP, upgraded WebSocket connections and HTTPS/TLS can pass through without HTTP header changes or TLS termination. Normal HA authentication remains required. HA sees the add-on's internal address as the source: review any IP bans or trusted-network authentication; do not enable broad trusted-network access for this container. No new `trusted_proxies` setting is needed for this TCP relay.
+The pfSense UDP endpoint needs to be reachable from the remote site. CGNAT at the
+remote site is fine: the add-on initiates the tunnel. `persistent_keepalive: 25`
+maintains the mapping; it is configurable from 0 to 65535 seconds (0 disables it).
 
-Containers still share the host's kernel, CPU and memory. Network isolation limits routing mistakes; it does not guarantee that an add-on can never affect the host.
+## Configuration example
 
-## Address plan
+These are example networks. Replace them with your actual address plan.
 
-| Component | Example |
-|---|---|
-| Home network behind pfSense | 192.168.10.0/24 |
-| Public pfSense endpoint | vpn.example.com:51820/UDP |
-| pfSense tunnel address | 10.77.0.1/24 |
-| Add-on tunnel address | 10.77.0.2/32 |
-| HA backend | homeassistant:8123 |
-
-The remote side initiates UDP and keepalive maintains the CGNAT mapping. pfSense must have reachable public IPv4 or upstream UDP port forwarding. If both sides use CGNAT without inbound access, another reachable endpoint is required. No remote-site port forwarding is needed.
-
-## Installation
-
-Add `https://github.com/FirestormV/ha-wireguard-client` to the Home Assistant app/add-on store repositories. Install, configure, save and start **WireGuard Client**. New installations default to manual startup. After acceptance tests, enable start on boot and optionally Supervisor Watchdog. Restart after configuration changes.
-
-For local installation, copy `wireguard_client` into `/addons/wireguard_client` through Samba/SSH and refresh the store. Supervisor builds the Dockerfile and needs internet access. Kernel WireGuard support and NET_ADMIN are required. No SYS_MODULE, host devices or Docker API are requested.
-
-## Upgrading from 0.1.x
-
-Version 0.1.x used host networking. Version 0.2.0 deliberately removes it and is marked as a breaking update to prevent an automatic rollout.
-
-1. While connected through the normal local HA address, disable the old add-on's start on boot and Watchdog, then **stop it before updating**. Its normal shutdown removes the old host interface and routes.
-2. If the old add-on previously crashed, check from the HA OS host console whether `wg-ha-client` or its routes remain: `ip link show dev wg-ha-client` and `ip -4 route show dev wg-ha-client`. The new isolated add-on cannot remove leftover host interfaces. If leftovers are confirmed, keep autostart disabled and perform a controlled HA OS reboot before continuing. Do not delete unrelated interfaces or routes.
-3. Update to 0.2.0. Existing keys and options are retained. Set `homeassistant_host` and `homeassistant_port` if the default `homeassistant:8123` does not match your Core installation.
-4. Start manually and complete the acceptance tests below before re-enabling autostart.
-
-The tunnel URL remains `http://10.77.0.2:8123` with the example settings. Access to other host services or a remote LAN through the old host interface is not provided. If Core uses TLS, use HTTPS with a hostname matching its certificate; the relay does not issue certificates.
-
-## First start: no keys required
-
-1. Leave `private_key` and `peer_public_key` empty and start the add-on.
-2. Select **Open Web UI**. The add-on generates a client key pair and displays its public key. With incomplete tunnel options it stays in setup mode without creating a tunnel or changing routes/firewall rules.
-3. Copy the public key into the client peer in pfSense.
-4. Fill in the pfSense public key, endpoint and networks under **Configuration**. Leave `private_key` empty to keep using the managed key. Save and restart.
-
-The private key is stored in `/data/client-private.key` with permissions 0600, written atomically and included in add-on data backups. It survives restarts and updates. It is never displayed in the web UI or logs. Protect backups; reinstalling without restoring the add-on data creates a different identity. Do not clone the same identity onto multiple simultaneous clients.
-
-An explicitly supplied private key takes precedence and becomes the saved identity. Clearing the field later reuses that last saved key. Invalid stored keys cause an error rather than silently generating a replacement. Invalid tunnel settings keep the public key page available in setup mode; correct them and restart. Changes are not automatically applied while running.
-
-## Keys and options
-
-Automatic key management is recommended. To import an existing identity instead, generate a client key pair on a trusted system with WireGuard installed:
-
-```sh
-umask 077
-wg genkey > ha-private.key
-wg pubkey < ha-private.key > ha-public.key
-```
-
-The client private key belongs in the add-on. Put the client public key in the pfSense peer. Put the **pfSense tunnel's** public key in `peer_public_key`. An optional PSK generated with `wg genpsk` must match on both sides.
+| Setting | Meaning | Example |
+|---|---|---|
+| pfSense tunnel IP | VPN gateway | 192.168.101.1 |
+| Client tunnel IP | This add-on's VPN identity | 192.168.101.20/32 |
+| VPN laptop | Another peer reaching this gateway | 192.168.101.11 |
+| Home network behind pfSense | Source network allowed through VPN | 192.168.1.0/24 |
+| LAN at the HA installation | Destination network behind this add-on | 192.168.20.0/24 |
 
 ```yaml
-private_key: ""  # Automatically generate/reuse the saved client key
+private_key: ""
 peer_public_key: "YOUR_PFSENSE_PUBLIC_KEY"
 preshared_key: ""
 endpoint_host: "vpn.example.com"
 endpoint_port: 51820
-tunnel_address: "10.77.0.2/32"
+tunnel_address: "192.168.101.20/32"
 allowed_ips:
-  - "10.77.0.1/32"
-  - "192.168.10.0/24"
+  - "192.168.101.0/24"
+  - "192.168.1.0/24"
 persistent_keepalive: 25
 mtu: 1380
 homeassistant_host: "homeassistant"
 homeassistant_port: 8123
+site_to_site: true
+local_networks:
+  - "192.168.20.0/24"
 ```
 
-| Option | Meaning |
-|---|---|
-| `private_key` | Empty: generate/reuse saved key; nonempty: import this private key |
-| `peer_public_key` | Required pfSense public key |
-| `preshared_key` | Optional shared secret; empty disables it |
-| `endpoint_host` | pfSense public IPv4 or DNS name |
-| `endpoint_port` | pfSense UDP port; default 51820 |
-| `tunnel_address` | Add-on tunnel IPv4 /32 |
-| `allowed_ips` | Peer source networks and return routes inside the add-on |
-| `persistent_keepalive` | 0–65535 seconds, default 25; 0 disables it |
-| `mtu` | 1280–1420, default 1380 |
-| `homeassistant_host` | Backend IPv4 or DNS name; default `homeassistant` |
-| `homeassistant_port` | Backend TCP port; default 8123 |
+`allowed_ips` describes sources/networks **through pfSense**, used for WireGuard
+source authorization and return routing. `local_networks` describes destinations
+**at the HA site**. Do not put the local LAN in `allowed_ips`.
 
-The tunnel-facing TCP port is always 8123. The backend port may differ. Core must listen on an address reachable from the internal add-on network. Backend DNS is resolved at startup; restart if its address changes. A backend unavailable at startup can accept later connections when it recovers at the same IP.
+`local_networks` may contain multiple IPv4 CIDRs or individual `/32` destinations.
+For a first test, prefer one known LAN device `/32`. There is a limit of 32 entries
+in each network list. The gateway rejects malformed networks, overlaps with tunnel
+or remote networks, internal container networks, loopback, link-local, multicast,
+reserved ranges and default routes. Existing routing to the LAN must use a gateway
+through `eth0`. The add-on does not add a directly connected LAN route.
 
-Include all home subnets that need access in `allowed_ips`. Do not include the remote LAN, backend address or default route. Tunnel and allowed networks must not overlap the container's internal Docker networks. Route conflict checks now inspect the container's routes, not the host's. A bad route can break this add-on's access without rewriting HA's host routes.
+If the laptop's directly connected LAN and the remote LAN share the same prefix,
+resolve that routing conflict first. The add-on cannot distinguish two sites with
+the same destination addresses automatically.
 
-Secrets remain in Supervisor options and may be in backups. Password fields mask values; they do not provide separate encryption. Temporary WireGuard configuration uses permissions 0600 and is removed after loading. Logs do not print private keys.
+`site_to_site: true` with an empty `local_networks` is a configuration error.
+To use only the existing HA relay:
 
-## View the public key
+```yaml
+site_to_site: false
+local_networks: []
+```
 
-Start the add-on, then select **Open Web UI**, even with the initial blank key fields. A read-only field and copy button display the public key derived at startup. Restart after changing the private key. The page is available during DNS retries and handshake waits, but not when the process is stopped or fails to start. The first start generates and stores a private key automatically when no saved or supplied key exists.
+All schema fields must be present in 0.3.0; there is no legacy fallback parser.
+When updating, add these two new fields explicitly, save, and restart. The release
+is marked as a breaking update. Back up add-on data to preserve its identity.
 
-HA Ingress authenticates access. Only the actual Supervisor source address 172.30.32.2 is allowed. Port 8099 is internal to the container and is not published on the host. Choose English or Swedish on the page; the initial selection follows browser language. If clipboard access is unavailable, the key is selected for manual copying.
+## pfSense and other VPN peers
 
-## pfSense
+For this add-on's peer on pfSense, use its tunnel `/32` **plus the local LAN
+networks behind it**, for example `192.168.101.20/32` and `192.168.20.0/24`.
+Do not assign the entire VPN subnet to this peer: other VPN addresses belong to
+other peers. Ensure pfSense actually routes the LAN destinations to this tunnel
+and that its WireGuard firewall rules allow the intended source/destination flows.
 
-1. Create a WireGuard tunnel listening on UDP 51820, address `10.77.0.1/24`, with its own key pair.
-2. Add a peer with the client's public key, **Dynamic Endpoint** enabled, empty endpoint, and Allowed IPs `10.77.0.2/32`. Match any PSK.
-3. WAN: allow UDP to WAN address port 51820. No WAN opening for HA's 8123 is needed.
-4. Home LAN/VLAN: allow desired clients to `10.77.0.2`, TCP 8123, before policy-routing rules and without a selected WAN/VPN gateway. Reply traffic uses connection state.
-5. Verify pfSense has a connected tunnel route for `10.77.0.0/24`. Home clients must route this network through pfSense. Keep WAN as pfSense's default gateway.
-6. Broad inbound tunnel allow-any rules and NAT between home and tunnel are unnecessary for this direction. Review custom floating, group and outbound NAT rules.
+A connecting laptop's WireGuard AllowedIPs/routes must also include the desired
+remote destinations. Rules permitting peer-to-peer traffic alone do not create
+those client routes. No inbound port forwarding at the remote HA site is needed.
 
-Restrict access with pfSense rules to the intended home clients. IP forwarding is blocked in the add-on; only the TCP relay exposes HA. The Ingress page denies requests arriving from the tunnel.
+## Isolation and packet flow
 
-## Acceptance tests and recovery
+```text
+VPN source -> pfSense -> WireGuard -> container FORWARD -> restricted SNAT
+           -> existing container gateway -> host's existing NAT -> local LAN
+```
 
-- Check for a recent handshake in pfSense and **Handshake healthy** in the add-on log. The startup message alone does not prove connectivity.
-- Open the normal local HA URL and `http://10.77.0.2:8123` from home. Check login and live dashboard updates. For TLS, use your matching hostname and HTTPS.
-- Open the public key page and compare the key with the log/pfSense peer.
-- Stop the add-on: tunnel access should stop while local HA remains reachable. Start it again and check recovery.
-- In a controlled test, disconnect/reconnect remote internet, restart the add-on, and reboot HA OS. Check regular HA access throughout. Do not use power cuts for testing.
-- Host route tables should be unchanged by tunnel start/stop. The host should not have `wg-ha-client`; it exists only inside the running container.
+`host_network: false`, AppArmor and only the existing NET_ADMIN/NET_RAW capabilities
+are retained. No Docker socket, host mounts, host route/firewall edits, SYS_ADMIN,
+full privileged mode, macvlan, DHCP server or dedicated physical LAN IP is used.
+Containers still share the host kernel and resources; this is network isolation.
 
-No handshake: check endpoint, UDP and keys. Handshake but no HTTP: check pfSense rules, the home source subnet in `allowed_ips`, backend address/port and Core's listening configuration. Shared source-IP bans in Core can block all tunnel users. A stopped relay process stops the add-on; failed backend connections alone do not. For stalled large transfers, try MTU 1280.
+The add-on never changes `net.ipv4.ip_forward`. Gateway mode requires it already
+be `1`, otherwise startup fails closed with a diagnostic. Disabled mode is secured
+by `FORWARD DROP`, with no gateway exceptions or gateway NAT, even if the inherited
+sysctl is `1`.
 
-Endpoint DNS is retried after 180 seconds without a recent handshake, at 30-second intervals. Initial endpoint/backend DNS failures wait and retry. Watchdog detects process failures, not all network failures.
+Owned chains `WG_HA_S2S_FWD`, `WG_HA_S2S_MARK` and `WG_HA_S2S_NAT` restrict
+TCP/UDP/ICMP to configured remote sources and LAN destinations. A conntrack mark
+identifies eligible forwarded traffic so locally generated process traffic does
+not match gateway NAT. Forwarding is activated last, disabled first during cleanup,
+and monitored for missing or changed rules. Cleanup preserves unrelated rules and
+does not flush conntrack globally. A stopped tunnel cannot forward lingering flows.
 
-## Future remote LAN routing
+LAN devices normally see the **HA host's LAN address** as the source after double
+NAT. They cannot identify individual VPN users by source IP. Apply per-source
+restrictions on pfSense. This mode permits VPN-initiated sessions and their replies;
+it does not make LAN-initiated connections to VPN networks work automatically.
+Broadcast, multicast, mDNS reflection, discovery and IPv6 are out of scope.
 
-This version intentionally provides HA-only TCP access. Do not add remote-LAN routes expecting it to forward packets.
+## Home Assistant access
 
-A future LAN gateway should be a separate, explicitly enabled component, ideally on the remote router or a dedicated gateway. It needs remote subnet entries in pfSense peer Allowed IPs, matching pfSense routes, narrow forwarding rules, and a return route on the remote router (or carefully scoped SNAT). It should have its own peer identity so this HA-only add-on can stay isolated. Broadcast/mDNS discovery requires separate handling.
+`http://192.168.101.20:8123` relays to `homeassistant:8123` in both modes. If Core
+uses TLS, use HTTPS and a hostname matching its certificate. The relay transports
+TCP bytes without terminating TLS or changing HTTP/WebSocket headers. HA sees the
+container as source. The relay does not require a new `trusted_proxies` setting.
+Normal HA authentication still applies; avoid broad trusted-network bypasses.
+No host ports are published.
 
-## References
+## Dashboard and diagnostics
 
-- [HA network communication and the homeassistant alias](https://developers.home-assistant.io/docs/apps/communication/)
-- [HA app configuration](https://developers.home-assistant.io/docs/apps/configuration/)
-- [WireGuard Quick Start](https://www.wireguard.com/quickstart/)
-- [Netgate remote access](https://docs.netgate.com/pfsense/en/latest/recipes/wireguard-ra.html)
+Open Web UI (optionally pin it in the HA menu). Configuration remains in HA options.
+The dashboard shows public key, endpoint, peer, latest handshake, keepalive,
+WireGuard RX/TX totals and sampled rates, add-on uptime, HA relay and gateway state.
+Polling is approximately every three seconds and pauses while the page is hidden.
+Rates and totals may reset when the interface or add-on restarts; no history is stored.
 
-## Diagnostics (0.2.3)
+Health is Healthy, Idle, Warning or Error. An old handshake with keepalive disabled
+is Idle, not proof of disconnection. Rule verification does not prove the LAN
+service is reachable. A running relay does not prove HA login works: the manual
+backend probe tests only TCP connectivity and displays its last test time.
 
-Open Web UI → Diagnostics. Refresh collects state inside this add-on only: active WireGuard Allowed IPs and endpoint, transfer counters, handshake timestamps/age, interface addresses and counters, all container IPv4 routes and rules, TCP listeners, firewall counters, ICMP echo and reverse-path-filter settings. Return-route examples use the first host of each configured network; they are not proof of every client route.
+Advanced diagnostics includes addresses, routes, DNS servers, forwarding state and
+firewall/NAT rules. Raw output is separate from the overview. The manual capture
+is bounded to 15 seconds/60 packet headers, on the WireGuard interface only; it
+covers ICMP echo and HA TCP connection-control packets, not arbitrary LAN traffic.
+No scan or subnet probing runs in the background.
 
-Test HA backend TCP checks only the configured, resolved Core IP and port. Success proves a TCP connection, not login, HTTP or TLS. Capture runs for at most 15 seconds/60 packets on wg-ha-client. Start it, then ping the tunnel IP from pfSense with its tunnel IP as source. Only ICMP echo and TCP port 8123 connection-control summaries are returned, without packet payloads or pcap files. NET_RAW is required in the container.
+Copy diagnostics produces a compact text report with version, architecture,
+public peer data, routes and rule-verification state. Private keys, PSKs, HA tokens
+and Supervisor tokens are not included. Network addresses and public keys are
+included: review the report before posting publicly. Per-LAN byte totals are not
+implemented; NAT counters count connection setup rather than all traffic.
 
-Requests and no replies suggest a local filtering/return-route issue. No packets does not prove a broken tunnel: encrypted packets may have been discarded before the interface, or no matching traffic was sent during the window. Compare peer selection, source Allowed IPs, handshake and transfer counters. Both request and reply mean the add-on responded; inspect pfSense's receive path next.
+Networking failures stop/clean up the tunnel and keep Ingress available whenever
+possible. Correct Configuration and restart to retry. If cleanup cannot be verified,
+stop the add-on to destroy its container namespace before starting again. Application
+logs use UTC timestamps (`Z`) and do not expose raw errors that could contain keys.
 
-Download report includes the last collected snapshot, capture and backend test. It excludes private keys, PSKs, Supervisor tokens and options files, but contains network IPs/routes and public peer keys; review before sharing. Diagnostics refreshes on demand and caches snapshots for five seconds. No arbitrary command, target or capture filter can be supplied from the browser.
+## Acceptance test on the fresh HA installation
 
-## Access from multiple VPN peers (0.2.4)
+Docker integration tests use real WireGuard with a simulated host-NAT/LAN fixture.
+They do not establish HA OS/Supervisor/AppArmor or physical LAN compatibility.
 
-For client tunnel address `192.168.101.20/32`, `allowed_ips: ["192.168.101.0/24"]` permits source addresses from the entire VPN subnet through pfSense and installs its return route inside the container. The client address stays locally assigned as /32, with local delivery taking precedence. Do not also list .1/32 or .11/32 alongside that /24; overlapping entries are rejected. The pfSense peer for this add-on must still use only `192.168.101.20/32`; pfSense routes other peer addresses to their own peers. Firewall rules and each connecting peer's routes must allow access. The subnet must not overlap the container bridge, backend or public endpoint.
+1. Keep `site_to_site: false`, start, copy the public key and finish pfSense setup.
+2. From the VPN peer, reach the add-on's tunnel IP on TCP 8123. Verify HA login and
+   normal operation; inspect the handshake and proxy in the dashboard.
+3. Enable site-to-site with one known LAN device `/32`. Add that destination to
+   the pfSense peer and connecting client's routes/AllowedIPs. Save and restart.
+4. Verify forwarding, firewall and NAT in the dashboard. Test a known TCP service,
+   UDP service if available, and ICMP if that device permits it. A ping timeout
+   alone does not prove routing failure.
+5. Check that a reachable device outside `local_networks` cannot be reached through
+   the tunnel. Confirm TCP 8123 on the add-on still reaches HA.
+6. Restart the add-on and repeat. Disable gateway mode and confirm LAN forwarding
+   stops while HA relay access still works. Expand the allowlist only after this.
 
-Versions through 0.2.3 reject a network containing the client address and remain in setup mode. No handshake or ping is possible in that state; update to 0.2.4 and restart.
-
-## Log timestamps (0.2.5)
-
-Application log lines include UTC date/time and severity, e.g. `2026-10-03T12:45:00Z [INFO] Handshake healthy`. The `Z` means UTC, independent of the browser timezone. Compare with pfSense capture timestamps after accounting for its timezone. Logs do not show private keys or PSKs.
+If forwarding is unavailable or packets stop at the HA host boundary, capture and
+report the last observed point. Do not enable host networking or larger privileges
+to work around it. Share Copy diagnostics, not private keys or full options files.

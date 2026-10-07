@@ -1,11 +1,12 @@
 """Verify first-start onboarding and persisted identity using the built image."""
 import json
+import uuid
 from pathlib import Path
 import subprocess
 import tempfile
 import time
 
-NAME='wg-ha-setup'
+NAME='wg-ha-setup-'+uuid.uuid4().hex[:8]
 
 def cmd(*args):
     return subprocess.check_output(args,text=True,stderr=subprocess.PIPE,timeout=30).strip()
@@ -29,14 +30,16 @@ try:
     with tempfile.TemporaryDirectory() as directory:
         # All tunnel fields may be absent at this stage; no network config is needed.
         Path(directory,'options.json').write_text(json.dumps({'private_key':'','peer_public_key':''}))
-        cmd('docker','run','-d','--name',NAME,'--cap-add','NET_ADMIN','-v',f'{directory}:/data','ha-wireguard-client:test')
+        cmd('docker','create','--name',NAME,'--cap-add','NET_ADMIN','ha-wireguard-client:test')
+        cmd('docker','cp',f'{directory}/.',f'{NAME}:/data')
+        cmd('docker','start',NAME)
         first=wait_ready()
         assert len(first)==44
         assert cmd('docker','exec',NAME,'wg','show','interfaces') == ''
-        assert cmd('docker','exec',NAME,'iptables','-S','FORWARD') == '-P FORWARD ACCEPT'
+        assert cmd('docker','exec',NAME,'iptables','-S','FORWARD') == '-P FORWARD DROP'
         cmd('docker','restart',NAME)
         assert wait_ready()==first
         assert cmd('docker','exec',NAME,'wg','show','interfaces') == ''
-        print('PASS: blank first start, persistent key with mode 0600, setup page, no tunnel/firewall mutation, restart identity preserved')
+        print('PASS: blank first start, persistent key with mode 0600, setup page, no tunnel, forwarding policy DROP, restart identity preserved')
 finally:
     subprocess.run(['docker','rm','-f',NAME],capture_output=True)

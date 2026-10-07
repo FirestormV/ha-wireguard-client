@@ -1,9 +1,12 @@
+import sys
 import importlib.util
 import json
 from pathlib import Path
 import subprocess
 import unittest
 from unittest.mock import patch, Mock
+
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'wireguard_client'))
 
 spec=importlib.util.spec_from_file_location('diag_test',Path(__file__).resolve().parents[1]/'wireguard_client/diagnostics.py')
 d=importlib.util.module_from_spec(spec); spec.loader.exec_module(d)

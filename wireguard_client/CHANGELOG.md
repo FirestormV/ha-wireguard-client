@@ -1,3 +1,18 @@
+# 0.3.0
+
+Experimental breaking update; HA OS/Supervisor acceptance testing remains required.
+
+- Add explicit site_to_site and local_networks options with fail-closed validation.
+- Keep host_network false and existing capabilities; never change sysctls or host networking.
+- Restrict forwarded TCP/UDP/ICMP and NAT to approved VPN sources and LAN destinations.
+- Preserve the HA TCP relay in both modes; verify rules during startup and runtime.
+- Add owned-chain cleanup, partial-start failure handling and a surviving Ingress error page.
+- Replace the key page with a lightweight English/Swedish status dashboard, sampled WireGuard rates,
+  proxy state, gateway checks, routes and copyable secret-free diagnostics.
+- Distinguish idle peers from keepalive-related handshake warnings.
+- Require all configuration fields; remove legacy option defaults.
+- Extend unit tests and real WireGuard integration tests for gateway, failures and diagnostics.
+
 # 0.2.5
 
 - Add an explicit UTC timestamp and severity level to every application log line.

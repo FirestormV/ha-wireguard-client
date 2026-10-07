@@ -1,4 +1,10 @@
 configuration:
+  site_to_site:
+    name: "Site-to-site-gateway"
+    description: "Tillåt IPv4-anslutningar från VPN till lokala nät via begränsad NAT. Behåller isoleringen från hostens nätverk. Kräver befintlig IPv4-forwarding i containern."
+  local_networks:
+    name: "Lokala LAN-destinationer"
+    description: "Explicita IPv4-nät som nås från HA-sidan, t.ex. 192.168.1.0/24. Krävs när gateway är aktiverad. Får inte överlappa nät via pfSense eller interna containernät."
   private_key:
     name: "Klientens privata nyckel"
     description: "Lämna tom för att automatiskt skapa och återanvända en sparad klientnyckel. Klistra valfritt in en egen privat nyckel för att importera den. Dela aldrig nyckeln."

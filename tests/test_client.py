@@ -14,7 +14,7 @@ spec.loader.exec_module(c)
 
 
 def options():
-    return dict(private_key=base64.b64encode(b'x'*32).decode(), peer_public_key=base64.b64encode(b'y'*32).decode(), preshared_key='', endpoint_host='vpn.example.com', endpoint_port=51820, tunnel_address='10.77.0.2/32', allowed_ips=['10.77.0.1/32','192.168.10.0/24'], mtu=1380, persistent_keepalive=25, homeassistant_host="homeassistant", homeassistant_port=8123)
+    return dict(site_to_site=False, local_networks=[], private_key=base64.b64encode(b'x'*32).decode(), peer_public_key=base64.b64encode(b'y'*32).decode(), preshared_key='', endpoint_host='vpn.example.com', endpoint_port=51820, tunnel_address='10.77.0.2/32', allowed_ips=['10.77.0.1/32','192.168.10.0/24'], mtu=1380, persistent_keepalive=25, homeassistant_host="homeassistant", homeassistant_port=8123)
 
 
 class ClientTests(unittest.TestCase):
@@ -38,10 +38,10 @@ class ClientTests(unittest.TestCase):
     def test_valid(self):
         self.assertEqual(c.validate(options()), options())
 
-    def test_legacy_options_default(self):
+    def test_missing_options_rejected(self):
         o = options()
         del o['persistent_keepalive']
-        self.assertEqual(c.validate(o)['persistent_keepalive'], 25)
+        with self.assertRaises(c.ConfigurationError): c.validate(o)
 
     def test_keepalive_validation(self):
         for value in (0, 1, 25, 60, 65535):
@@ -127,9 +127,9 @@ class ClientTests(unittest.TestCase):
         ui = Mock()
         o = options()
         public = o['peer_public_key']
-        with patch.object(c.Path, 'read_text', return_value=json.dumps(o)), patch.object(c.signal, 'signal'), patch.object(c.os, 'umask'), patch.object(c, 'prepare_identity', return_value=(o,public)), patch.object(c, 'run', return_value=public) as run, patch.dict(sys.modules, {'public_key_ui':ui}), patch.object(c, 'resolve', return_value='203.0.113.1'), patch.object(c, 'resolve_backend', return_value='172.30.32.1'), patch.object(c, 'start'), patch.object(c, 'start_proxy'), patch.object(c, 'stop_proxy'), patch.object(c, 'monitor'), patch.object(c, 'remove_owned') as cleanup, patch('builtins.print'):
+        with patch.object(c.Path, 'read_text', return_value=json.dumps(o)), patch.object(c.signal, 'signal'), patch.object(c.os, 'umask'), patch.object(c, 'prepare_identity', return_value=(o,public)), patch.object(c, 'run', return_value=public) as run, patch.dict(sys.modules, {'public_key_ui':ui}), patch.object(c, 'resolve', return_value='203.0.113.1'), patch.object(c, 'resolve_backend', return_value='172.30.32.1'), patch.object(c, 'start'), patch.object(c, 'start_proxy'), patch.object(c, 'stop_proxy'), patch.object(c, 'monitor'), patch.object(c, 'Gateway') as gateway, patch.object(c, 'remove_owned') as cleanup, patch('builtins.print'):
             c.main()
-        run.assert_any_call('iptables', '-w', '5', '-P', 'FORWARD', 'DROP')
+        gateway.return_value.start.assert_called_once()
         self.assertEqual(ui.start.call_args.args[:2], (public, None))
         ui.start.return_value.shutdown.assert_called_once()
         ui.start.return_value.server_close.assert_called_once()
@@ -191,7 +191,7 @@ class ClientTests(unittest.TestCase):
         import sys
         o = options(); o['peer_public_key'] = ''
         ui = Mock()
-        with patch.object(c.Path,'read_text',return_value=json.dumps(o)), patch.object(c.signal,'signal'), patch.object(c.os,'umask'), patch.object(c, 'prepare_identity', return_value=(o, options()['peer_public_key'])), patch.object(c,'run') as run, patch.object(c,'start') as start, patch.object(c.STOP, 'wait') as wait, patch.dict(sys.modules, {'public_key_ui':ui}), patch('builtins.print'):
+        with patch.object(c.Path,'read_text',return_value=json.dumps(o)), patch.object(c.signal,'signal'), patch.object(c.os,'umask'), patch.object(c, 'prepare_identity', return_value=(o, options()['peer_public_key'])), patch.object(c,'Gateway'), patch.object(c,'run') as run, patch.object(c,'start') as start, patch.object(c.STOP, 'wait') as wait, patch.dict(sys.modules, {'public_key_ui':ui}), patch('builtins.print'):
             c.main()
         run.assert_not_called()
         start.assert_not_called()

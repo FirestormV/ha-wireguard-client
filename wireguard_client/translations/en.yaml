@@ -1,4 +1,10 @@
 configuration:
+  site_to_site:
+    name: "Site-to-site gateway"
+    description: "Allow VPN-initiated IPv4 connections to Local networks through restricted NAT. Keeps host networking isolated. Requires existing container IPv4 forwarding."
+  local_networks:
+    name: "Local LAN destinations"
+    description: "Explicit IPv4 CIDRs reachable from the HA site, e.g. 192.168.1.0/24. Required when gateway is enabled. Must not overlap networks through pfSense or internal container networks."
   private_key:
     name: "Client private key"
     description: "Leave empty to automatically generate and reuse a saved client key. Optionally paste an existing private key to import it. Never share it."

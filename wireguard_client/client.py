@@ -13,6 +13,8 @@ import subprocess
 import tempfile
 import threading
 import time
+from gateway import Gateway, GatewayError, validate as validate_gateway
+from health import peer_health
 
 IFACE = "wg-ha-client"
 OWNER = "ha-wireguard-client-v1"
@@ -36,7 +38,7 @@ class ConfigurationError(ValueError):
 
 
 def failure_message(exc):
-    if isinstance(exc, ConfigurationError):
+    if isinstance(exc, (ConfigurationError, GatewayError)):
         return "Configuration error: " + str(exc)
     return f"Startup/runtime failure ({type(exc).__name__}); see the last startup stage. Raw error details are hidden to protect secrets."
 
@@ -105,12 +107,9 @@ def validate(o):
     if not isinstance(o, dict):
         raise ConfigurationError("Configuration must be an object.")
     o = dict(o)
-    for field in ("private_key", "peer_public_key", "endpoint_host", "endpoint_port", "tunnel_address", "allowed_ips", "mtu"):
+    for field in ("private_key", "peer_public_key", "preshared_key", "endpoint_host", "endpoint_port", "tunnel_address", "allowed_ips", "mtu", "homeassistant_host", "homeassistant_port", "persistent_keepalive", "site_to_site", "local_networks"):
         if field not in o:
             raise ConfigurationError(f"Missing required option: {field}.")
-    o.setdefault("homeassistant_host", "homeassistant")
-    o.setdefault("homeassistant_port", 8123)
-    o.setdefault("persistent_keepalive", 25)  # Backward-compatible v0.1.0 options.
     for name in ("private_key", "peer_public_key"):
         o[name] = key(o[name], name)
     if o.get("preshared_key"):
@@ -130,8 +129,8 @@ def validate(o):
         raise ConfigurationError("tunnel_address: enter an IPv4 address with /32, for example 10.77.0.2/32.") from None
     if addr.network.prefixlen != 32 or addr.ip.is_unspecified or addr.ip.is_multicast:
         raise ConfigurationError("tunnel_address must be a unicast IPv4 /32; use /32 rather than the tunnel subnet mask.")
-    if not isinstance(o["allowed_ips"], list) or not o["allowed_ips"]:
-        raise ConfigurationError("allowed_ips must be a nonempty list of IPv4 networks.")
+    if not isinstance(o["allowed_ips"], list) or not 1 <= len(o["allowed_ips"]) <= 32:
+        raise ConfigurationError("allowed_ips must contain 1 to 32 IPv4 networks.")
     nets = []
     for index, value in enumerate(o["allowed_ips"], 1):
         try:
@@ -147,6 +146,7 @@ def validate(o):
             raise ConfigurationError(f"allowed_ips entry {index + 1} ({net}) overlaps an earlier entry. Remove overlapping or duplicate networks.")
     o["allowed_ips"] = [str(n) for n in nets]
     o["tunnel_address"] = str(addr)
+    validate_gateway(o)
     return o
 
 
@@ -243,17 +243,21 @@ def stop_proxy(proxy):
     proxy.wait(timeout=5)
 
 
-def monitor(o, proxy):
+def monitor(o, proxy, diagnostics, gateway):
     state = None
-    while not STOP.wait(30):
+    began = time.monotonic()
+    while not STOP.wait(10):
         if proxy.poll() is not None:
             raise RuntimeError("Home Assistant relay exited")
+        gateway_state = gateway.inspect()
+        if not gateway_state['firewall'] or not gateway_state['nat'] or (gateway.enabled and gateway_state['ip_forward'] is not True):
+            raise GatewayError('Gateway safety check failed: forwarding, firewall or NAT state changed. Tunnel stopped; inspect diagnostics.')
         stamp = int(run("wg", "show", IFACE, "latest-handshakes").split()[-1])
-        healthy = stamp > 0 and time.time() - stamp < 180
-        if healthy != state:
-            LOG.info("Handshake healthy" if healthy else "No recent handshake; check endpoint, peer keys and pfSense WAN rule")
-            state = healthy
-        if not healthy:
+        health, message = peer_health(stamp, o['persistent_keepalive'], time.time(), time.monotonic() - began)
+        if health != state:
+            LOG.info('%s: %s', health, message)
+            state = health
+        if health == 'Warning':
             try:
                 endpoint = resolve(o)
                 run("wg", "set", IFACE, "peer", o["peer_public_key"], "endpoint", f'{endpoint}:{o["endpoint_port"]}')
@@ -275,16 +279,19 @@ def main():
     setup_error = None
     try:
         o = validate(raw_options)
-    except ConfigurationError as exc:
+    except (ConfigurationError, GatewayError) as exc:
         setup_error = str(exc)
     import public_key_ui
-    LOG.info("Startup stage: starting Ingress public key page")
+    LOG.info("Startup stage: starting Ingress status dashboard")
     from diagnostics import Diagnostics
     diagnostics = Diagnostics(o if setup_error is None else {}, setup_error)
+    gateway = Gateway(o if setup_error is None else {'site_to_site': False, 'local_networks': [], 'allowed_ips': []})
+    diagnostics.gateway = gateway
     ui = public_key_ui.start(public_key, setup_error, diagnostics)
     started = False
     proxy = None
     try:
+        gateway.cleanup()
         if setup_error is not None:
             LOG.info("Setup mode: " + setup_error)
             LOG.info("Open Web UI to copy the client public key. Complete Configuration, save and restart. No tunnel has been started.")
@@ -302,27 +309,42 @@ def main():
                 STOP.wait(30)
         else:
             return
-        # Only this container network namespace is affected. No IP forwarding.
-        LOG.info("Startup stage: applying container forwarding policy")
-        run("iptables", "-w", "5", "-P", "FORWARD", "DROP")
         LOG.info("Startup stage: checking routes and creating WireGuard interface")
         start(o, endpoint)
         started = True
         LOG.info("Startup stage: starting Home Assistant TCP relay")
         proxy = start_proxy(o, backend)
+        diagnostics.proxy = proxy
+        LOG.info('HA TCP proxy started')
+        gateway.start()
+        LOG.info('Site-to-site gateway %s', 'enabled; local networks: ' + ', '.join(gateway.networks) if gateway.enabled else 'disabled')
         diagnostics.stage = "running"
         LOG.info(f'Tunnel configured; waiting for handshake. PersistentKeepalive={o["persistent_keepalive"]}')
         LOG.info("Client public key: " + public_key)
-        monitor(o, proxy)
+        monitor(o, proxy, diagnostics, gateway)
+    except Exception as exc:
+        diagnostics.stage = 'error'
+        diagnostics.setup_error = failure_message(exc)
+        LOG.error(diagnostics.setup_error)
     finally:
         try:
             try:
-                if proxy is not None:
-                    stop_proxy(proxy)
+                gateway.cleanup()
             finally:
-                if started:
-                    remove_owned()
+                try:
+                    if proxy is not None:
+                        stop_proxy(proxy)
+                finally:
+                    if started:
+                        remove_owned()
+        except Exception:
+            diagnostics.stage = 'error'
+            diagnostics.setup_error = 'Network cleanup failed. Stop the add-on to destroy its network namespace before retrying.'
+            LOG.error(diagnostics.setup_error)
         finally:
+            if diagnostics.stage == 'error' and not STOP.is_set():
+                LOG.info('Ingress remains available for diagnostics. Save configuration and restart to retry.')
+                STOP.wait()
             ui.shutdown()
             ui.server_close()
 

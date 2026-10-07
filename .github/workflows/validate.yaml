@@ -17,3 +17,5 @@ jobs:
         run: python3 tests/integration/run.py
       - name: First-start setup and key persistence
         run: python3 tests/integration/setup.py
+      - name: Restricted gateway and failure-state integration
+        run: python3 tests/integration/gateway.py

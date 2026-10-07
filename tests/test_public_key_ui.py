@@ -12,8 +12,8 @@ PUBLIC = 'eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHg='
 
 
 class UITests(unittest.TestCase):
-    def request(self, address, path='/', forwarded=None):
-        handler = object.__new__(ui.handler_for(PUBLIC))
+    def request(self, address, path='/', forwarded=None, diagnostics=None):
+        handler = object.__new__(ui.handler_for(PUBLIC, diagnostics=diagnostics))
         handler.client_address = (address, 1234)
         handler.path = path
         handler.headers = {'X-Forwarded-For': forwarded} if forwarded else {}
@@ -58,6 +58,19 @@ class UITests(unittest.TestCase):
                 handler.do_POST()
             error.assert_called_once_with(403)
         diag.capture.assert_not_called()
+
+    def test_status_and_report_require_ingress(self):
+        from unittest.mock import Mock
+        import json
+        diag=Mock()
+        diag.status.return_value={'health':'Idle'}
+        diag.report.return_value={'text':'Safe report'}
+        for path, expected in [('/api/status',{'health':'Idle'}),('/api/report',{'text':'Safe report'})]:
+            body,response,_,error=self.request(ui.INGRESS_SOURCE,path,diagnostics=diag)
+            self.assertEqual(json.loads(body),expected)
+            response.assert_called_once_with(200); error.assert_not_called()
+            body,response,_,error=self.request('127.0.0.1',path,diagnostics=diag)
+            self.assertEqual(body,b''); error.assert_called_once_with(403)
 
     def test_render_escapes_input(self):
         body = ui.render('\"><script>alert(1)</script>')
